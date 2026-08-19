@@ -1,0 +1,74 @@
+{
+  "_comment": "إعدادات تصميم الستيكر — مقاسات sticker_width_mm و sticker_height_mm لازم تطابق الستيكر الحقيقي بالمسطرة. border_width_px = 0 يعني من غير فريم (الفريم بيطبع ويتداخل مع الستيكرات المجاورة)",
+  "sticker_width_mm": 40,
+  "sticker_height_mm": 29.4,
+  "dpi": 203,
+  "border_radius_mm": 1.5,
+  "border_width_px": 0,
+  "scale": 1.0,
+  "layout": {
+    "_comment": "mode: auto = لو أي سطر هيلمس السطر اللي بعده أو هيخرج من الستيكر أو فوق خط السعر يقلل الخطوط تلقائيا بنسب متناسبة لحد ما كل حاجة تناسب (المسافات اليدوية اللي ضبطتها بتتقفل لما المقاسات ما تحتاجش تصغير). gap_mm: أقل مسافة مسموحة بين سطرين. min_font_pt: الحد الأدنى للتصغير.",
+    "mode": "auto",
+    "gap_mm": 1.0,
+    "min_font_pt": 10
+  },
+  "print": {
+    "_comment": "printer_mode: label = الطابعة على وضع Label (بتستقبل أوامر TSPL) — receipt = الطابعة على وضع Receipt (بتستقبل أوامر ESC/POS). لازم يطابق المود اللي انت محططه في الطابعة. printer_width_dots: 384 لطابعة 58mm (203dpi). label_gap_mm: الفجوة بين الستيكر واللي بعده. align_mode: auto = تغذية بحساس الفجوة (مش بتشتغل إلا في وضع receipt) — fixed = تغذية بمقاس ثابت. align_offset_dots: مسافة إضافية بعد بداية الستيكر (8 نقطة = 1مم). sensor_align: true = بتبعت أمر GAPDETECT ON في وضع label فتقف الطابعة بحساس الفجوة عند أول الستيكر قبل كل طباعة — false = من غيرها. mirror: اقلبها true لو الصورة طلعت معكوسة. transport: usb أو tcp (المنفذ 9100).",
+    "printer_mode": "label",
+    "printer_width_dots": 384,
+    "label_gap_mm": 2,
+    "align_mode": "auto",
+    "align_offset_dots": 0,
+    "sensor_align": true,
+    "mirror": false,
+    "font_size_pt": 18,
+    "line_gap_pt": 11,
+    "transport": "usb",
+    "printer_host": "192.168.1.100",
+    "printer_port": 9100
+  },
+  "elements": [
+    {
+      "id": "customer_name",
+      "type": "dynamic",
+      "field": "customer_name",
+      "x_mm": 0,
+      "y_mm": 8.5,
+      "font_size_pt": 20,
+      "align": "center",
+      "bold": true
+    },
+{
+      "id": "phone",
+      "type": "dynamic",
+      "field": "phone",
+      "x_mm": 0,
+      "y_mm": 14.9,
+      "font_size_pt": 27,
+      "letter_spacing_pt": 0.14,
+      "align": "center"
+    },
+{
+      "id": "date",
+      "type": "dynamic",
+      "field": "date",
+      "x_mm": 0,
+      "y_mm": 22.59,
+      "font_size_pt": 19,
+      "align": "center"
+    },
+    {
+      "id": "cost",
+      "type": "field_with_label",
+      "field": "",
+      "label_text": "",
+      "x_mm": 30,
+      "y_mm": 26.8,
+      "font_size_pt": 10,
+      "bold": false,
+      "align": "right",
+      "underline": true,
+      "underline_length_mm": 19
+    }
+  ]
+}

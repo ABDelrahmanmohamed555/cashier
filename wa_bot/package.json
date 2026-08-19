@@ -1,0 +1,14 @@
+{
+  "name": "wa-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "إرسال ملفات/رسائل واتساب بدون فتح واتس ويب (جلسة محلية فقط)",
+  "scripts": {
+    "pair": "node wa_bot.js pair",
+    "send": "node wa_bot.js send"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

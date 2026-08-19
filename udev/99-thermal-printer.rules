@@ -1,0 +1,5 @@
+# الطابعة الحرارية - اتصال USB (usblp)
+# أجهزة /dev/usb/lp* بتتصنف تحت usbmisc (مش usb) عشان كده لازم نتطابق مع
+# SUBSYSTEM=="usbmisc" عشان الصلاحيات تتطبق فعليًا على جهاز الطباعة.
+
+SUBSYSTEM=="usbmisc", KERNEL=="lp*", MODE="0666"
