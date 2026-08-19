@@ -43,9 +43,9 @@
       "type": "dynamic",
       "field": "phone",
       "x_mm": 0,
-      "y_mm": 14.8,
-      "font_size_pt": 29,
-      "letter_spacing_pt": 0.35,
+      "y_mm": 14.7,
+      "font_size_pt": 30,
+      "letter_spacing_pt": 0.28,
       "align": "center"
     },
 {
