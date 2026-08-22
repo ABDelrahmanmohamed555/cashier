@@ -146,10 +146,11 @@ def _build_tspl(img, label_w_mm, label_h_mm, gap_mm, copies=1, sensor_align=True
     return cmd
 
 
-def _build_payload(cfg, order_data=None):
+def _build_payload(cfg, order_data=None, copies=1):
     """بناء الحمولة الكاملة اللي هتتبعت للطابعة حسب وضع التشغيل:
     - printer_mode=label  → أوامر TSPL (الطابعة في وضع الملصقات)
-    - printer_mode=receipt → أوامر ESC/POS (وضع الإيصالات)"""
+    - printer_mode=receipt → أوامر ESC/POS (وضع الإيصالات)
+    copies = عدد نسخ الطباعة (افتراضي 1)"""
     pcfg = _load_print_cfg()
 
     dpi = float(cfg.get("dpi", 203))
@@ -170,6 +171,7 @@ def _build_payload(cfg, order_data=None):
 
     if mode == "label":
         return _build_tspl(img, label_w_mm_t, label_h_mm_t, gap_mm,
+                           copies=max(1, int(copies)),
                            sensor_align=bool(pcfg.get("sensor_align", True)))
 
     # ---------- ESC/POS ----------
@@ -198,14 +200,14 @@ def _build_payload(cfg, order_data=None):
         remaining = max(0, label_h - img.height)
         payload += _feed_dots(remaining + gap_dots)
 
-    return payload
+    return payload * max(1, int(copies))
 
 
-def print_sticker(order_data=None):
+def print_sticker(order_data=None, copies=1):
     """طباعة الستيكر حسب وضع الطابعة المحدد في الإعدادات (printer_mode)."""
     cfg = load_config()
     try:
-        payload = _build_payload(cfg, order_data)
+        payload = _build_payload(cfg, order_data, copies=copies)
         _send_payload(payload)
     except PermissionError:
         return False, "صلاحية الوصول للطابعة مرفوضة (شوف udev rules)"
@@ -215,10 +217,10 @@ def print_sticker(order_data=None):
     return True, "تمت الطباعة"
 
 
-def print_sticker_async(order_data=None, callback=None):
+def print_sticker_async(order_data=None, callback=None, copies=1):
     """طباعة في Thread عشان الواجهة متتجمّدش."""
     def worker():
-        ok, msg = print_sticker(order_data)
+        ok, msg = print_sticker(order_data, copies=copies)
         if callback:
             callback(ok, msg)
 

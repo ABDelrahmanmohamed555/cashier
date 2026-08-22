@@ -229,7 +229,48 @@ class MainWindow(ctk.CTk):
             text_color=COLORS["text_white"],
             placeholder_text_color=COLORS["text_light"],
         )
-        self.notes_entry.grid(row=7, column=0, sticky="ew", pady=(0, 15))
+        self.notes_entry.grid(row=7, column=0, sticky="ew", pady=(0, 12))
+
+        self._create_field(form_body, "عدد نسخ الطباعة", 8)
+        copies_row = ctk.CTkFrame(form_body, fg_color="transparent", height=48)
+        copies_row.grid(row=9, column=0, sticky="ew", pady=(0, 15))
+        copies_row.grid_propagate(False)
+        copies_row.columnconfigure(0, weight=1)
+
+        self.copies_entry = ctk.CTkEntry(
+            copies_row,
+            width=90,
+            height=48,
+            justify="center",
+            font=FONT_BODY,
+            corner_radius=8,
+            border_width=1,
+            border_color=COLORS["border"],
+            fg_color=COLORS["bg_input"],
+            text_color=COLORS["text_white"],
+        )
+        self.copies_entry.insert(0, "1")
+        self.copies_entry.grid(row=0, column=0, sticky="e")
+        self.copies_entry.bind("<KeyRelease>", self._on_copies_typed)
+
+        arrows = ctk.CTkFrame(copies_row, fg_color="transparent", width=40)
+        arrows.grid(row=0, column=1, sticky="ns", padx=(6, 8))
+        up_btn = ctk.CTkButton(
+            arrows, text="\u25b2", width=40, height=22, corner_radius=6,
+            font=(ctk.ThemeManager.theme["CTkFont"]["family"], 11),
+            fg_color=COLORS["bg_input"], hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_light"],
+            command=lambda: self._step_copies(1),
+        )
+        up_btn.pack(side="top", fill="x")
+        down_btn = ctk.CTkButton(
+            arrows, text="\u25bc", width=40, height=22, corner_radius=6,
+            font=(ctk.ThemeManager.theme["CTkFont"]["family"], 11),
+            fg_color=COLORS["bg_input"], hover_color=COLORS["bg_hover"],
+            text_color=COLORS["text_light"],
+            command=lambda: self._step_copies(-1),
+        )
+        down_btn.pack(side="top", fill="x", pady=(2, 0))
 
         form_body.columnconfigure(0, weight=1)
 
@@ -404,6 +445,7 @@ class MainWindow(ctk.CTk):
             }
             print_sticker_async(
                 order_data,
+                copies=self._copies_value(),
                 callback=lambda ok, msg: self.after(0, lambda: self._show_toast(
                     reshape_arabic(f"تم الحفظ و{msg}  #{order_number:04d}"),
                     COLORS["success"] if ok else COLORS["danger"],
@@ -418,10 +460,39 @@ class MainWindow(ctk.CTk):
         self._clear_form()
         self._refresh_orders_table()
 
+    def _copies_value(self):
+        """عدد النسخ من الخانة مع تقييد آمن (1..15)."""
+        try:
+            return max(1, min(15, int(self.copies_entry.get() or "1")))
+        except ValueError:
+            return 1
+
+    def _step_copies(self, delta):
+        val = self._copies_value() + delta
+        self.copies_entry.delete(0, "end")
+        self.copies_entry.insert(0, str(max(1, min(15, val))))
+
+    def _on_copies_typed(self, *_):
+        txt = self.copies_entry.get()
+        digits = "".join(ch for ch in txt if ch.isdigit())[:2]
+        if digits != txt:
+            self.copies_entry.delete(0, "end")
+            if digits:
+                self.copies_entry.insert(0, digits)
+        try:
+            val = int(digits)
+        except ValueError:
+            return
+        if val > 15:
+            self.copies_entry.delete(0, "end")
+            self.copies_entry.insert(0, "15")
+
     def _clear_form(self):
         self.customer_name.delete(0, "end")
         self.customer_phone.delete(0, "end")
         self.notes_entry.delete(0, "end")
+        self.copies_entry.delete(0, "end")
+        self.copies_entry.insert(0, "1")
         self.device_type.set(reshape_arabic(DEVICE_TYPES[0]))
         self.order_number_label.configure(
             text=reshape_arabic(f"رقم الطلب:  #{get_next_order_number():04d}")
