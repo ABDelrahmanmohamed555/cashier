@@ -1,14 +1,14 @@
 {
   "sticker_width_mm": 40.0,
   "sticker_height_mm": 29.4,
-  "gap_mm": 5.0,
+  "gap_mm": 1.1,
   "copies": 1,
   "elements": [
     {
       "id": "product",
       "label": "اسم المنتج",
-      "text": "",
-      "font_size_pt": 43.0,
+      "text": "فارغة ",
+      "font_size_pt": 47.0,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0
@@ -16,8 +16,8 @@
     {
       "id": "price",
       "label": "السعر",
-      "text": "",
-      "font_size_pt": 60.0,
+      "text": "فارة 8",
+      "font_size_pt": 42.5,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0,
