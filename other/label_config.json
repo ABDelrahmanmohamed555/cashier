@@ -7,8 +7,8 @@
     {
       "id": "product",
       "label": "اسم المنتج",
-      "text": "فارغة ",
-      "font_size_pt": 47.0,
+      "text": "",
+      "font_size_pt": 36.5,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0
@@ -16,8 +16,8 @@
     {
       "id": "price",
       "label": "السعر",
-      "text": "فارة 8",
-      "font_size_pt": 42.5,
+      "text": "",
+      "font_size_pt": 20.0,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0,
