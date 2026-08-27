@@ -82,21 +82,32 @@ class ArabicEntry(ctk.CTkFrame):
             self._update_display()
             return "break"
         elif event.keysym == "Return":
-            self.master.focus_set()
+            self._raw_text += "\n"
+            self._update_display()
             return "break"
         return "break"
 
     def _update_display(self):
         if self._raw_text:
-            self._label.configure(
-                text=reshape_arabic(self._raw_text),
-                text_color=self._text_color,
-            )
+            # كل سطر لوحده عشان الـ reshape ما يتداخلش بين السطور
+            display = "\n".join(reshape_arabic(line) for line in self._raw_text.split("\n"))
+            self._label.configure(text=display, text_color=self._text_color)
         else:
             self._label.configure(
                 text=reshape_arabic(self._placeholder),
                 text_color=self._placeholder_color,
             )
+        self._auto_height()
+
+    def _auto_height(self):
+        n_lines = max(1, self._raw_text.count("\n") + 1)
+        try:
+            fs = self._font[1] if isinstance(self._font, (tuple, list)) else 14
+        except (IndexError, TypeError):
+            fs = 14
+        h = max(44, n_lines * int(fs * 2) + 12)
+        self.configure(height=h)
+        self._frame.configure(height=h)
 
     def get(self):
         return self._raw_text

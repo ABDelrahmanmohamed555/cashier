@@ -102,6 +102,7 @@ class LoginWindow(ctk.CTk):
             justify="right",
         )
         self.username_entry.pack(fill="x", pady=(0, 15))
+        self.username_entry.bind("<Return>", lambda e: self.password_entry.focus_set())
 
         password_label = ctk.CTkLabel(
             form_section,
@@ -179,6 +180,7 @@ class LoginWindow(ctk.CTk):
         self.subtitle_label = subtitle
         self.logo_label.configure(image=self._transparent_logo(110))  # اللوجو مش باين أول ما النافذة تفتح
         self.after(150, self._play_intro)
+        self.after(300, lambda: self.username_entry.focus_set())
 
     # ---------- أنيميشن الدخول ----------
 
@@ -279,6 +281,7 @@ class LoginWindow(ctk.CTk):
         def done(idx):
             nxt = idx + 1
             if nxt >= len(self._intro_queue):
+                self.after(100, lambda: self.username_entry.focus_set())
                 return
             same = self._intro_queue[nxt][0] is self._intro_queue[idx][0]
             if same:

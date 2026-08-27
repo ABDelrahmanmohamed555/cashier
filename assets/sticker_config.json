@@ -25,7 +25,8 @@
     "line_gap_pt": 11,
     "transport": "usb",
     "printer_host": "192.168.1.100",
-    "printer_port": 9100
+    "printer_port": 9100,
+    "inter_copy_delay_ms": 1000
   },
   "elements": [
     {

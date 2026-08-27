@@ -93,10 +93,25 @@ def render(cfg):
 
     def layout_for(el, fs):
         font = _get_font(fs, bold=bool(el.get("bold", False)))
-        font = _shrink_font(d, el["_text"], font, max_w, el["_layout"])
         ls = _tracking_px(el, fs)
-        bb = d.textbbox((0, 0), el["_text"], font=font, anchor="mm", **el["_layout"])
-        return font, ls, bb[3] - bb[1]
+        lay = el["_layout"]
+        lines = el["_text"].split("\n") if "\n" in el["_text"] else [el["_text"]]
+
+        # تصغير حتى أطول سطر ينぴ في المساحة المتاحة
+        min_font_px = int(min_fs * 1.33 * SS)
+        while True:
+            max_w_line = max(d.textlength(line, font=font, **lay) for line in lines)
+            if max_w_line <= max_w or font.size <= min_font_px:
+                break
+            font = _get_font((font.size - 1) / (1.33 * SS),
+                             bold=bool(el.get("bold", False)))
+
+        # قياس ارتفاع كل سطر وتقسيمه
+        total_ih = 0
+        for line in lines:
+            bb = d.textbbox((0, 0), line, font=font, anchor="mm", **lay)
+            total_ih += bb[3] - bb[1]
+        return font, ls, total_ih
 
     # تجهيز النصوص: بنبعت النص خام ونخلّي libraqm يشكّل ويحدد الاتجاه
     # (نفس أسلوب sticker.py بالظبط) — الـ reshape المسبق كان يسبب نص معكوس
@@ -154,7 +169,10 @@ def render(cfg):
     for el, text, y, ih in used:
         if el.get("id") == "price" and el.get("underline"):
             font, ls, _ = layout_for(el, float(el.get("font_size_pt", 16)) * factor)
-            text_w = d.textlength(text, font=font, **el["_layout"]) + ls * max(0, len(text) - 1)
+            lay = el["_layout"]
+            lines = text.split("\n") if "\n" in text else [text]
+            text_w = max(d.textlength(line, font=font, **lay) + ls * max(0, len(line) - 1)
+                         for line in lines)
             if el.get("align") == "center":
                 x1, x2 = W / 2 - text_w / 2, W / 2 + text_w / 2
             elif el.get("align") == "left":

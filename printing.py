@@ -204,11 +204,26 @@ def _build_payload(cfg, order_data=None, copies=1):
 
 
 def print_sticker(order_data=None, copies=1):
-    """طباعة الستيكر حسب وضع الطابعة المحدد في الإعدادات (printer_mode)."""
+    """طباعة الستيكر حسب وضع الطابعة المحدد في الإعدادات (printer_mode).
+    في وضع الملصقات ومع نسخ متعددة: كل نسخة في وظيفة منفصلة
+    وبينها تأخير (inter_copy_delay_ms) حتى يلحق حساس الفجوة
+    يظبط أول الستيكر قبل النسخة التالية — أول واحدة كانت
+    مظبوطة والباقي لا بسبب الطباعة المتتابعة بدون انتظار."""
     cfg = load_config()
+    pcfg = _load_print_cfg()
+    copies = max(1, int(copies))
+    mode = pcfg.get("printer_mode", "receipt")
     try:
-        payload = _build_payload(cfg, order_data, copies=copies)
-        _send_payload(payload)
+        if mode == "label" and copies > 1:
+            delay = float(pcfg.get("inter_copy_delay_ms", 800)) / 1000.0
+            payload_one = _build_payload(cfg, order_data, copies=1)
+            for i in range(copies):
+                _send_payload(payload_one)
+                if i < copies - 1:
+                    time.sleep(delay)
+        else:
+            payload = _build_payload(cfg, order_data, copies=copies)
+            _send_payload(payload)
     except PermissionError:
         return False, "صلاحية الوصول للطابعة مرفوضة (شوف udev rules)"
     except OSError as e:
@@ -225,3 +240,24 @@ def print_sticker_async(order_data=None, callback=None, copies=1):
             callback(ok, msg)
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def feed_label(count=1):
+    """دفع ورقة ستيكرات (بدون طباعة) — بديل لزرار FEED على الطابعة."""
+    pcfg = _load_print_cfg()
+    w = float(pcfg.get("sticker_width_mm", 40))
+    h = float(pcfg.get("sticker_height_mm", 29.4))
+    gap = float(pcfg.get("label_gap_mm", 1))
+    cmd = (
+        f"SIZE {w} mm,{h} mm\r\n"
+        f"GAP {gap} mm,0\r\n"
+        "CLS\r\n"
+        f"PRINT {max(1, int(count))}\r\n"
+    ).encode()
+    _send_payload(cmd)
+
+
+def pause_print():
+    """إيقاف مؤقت أثناء الطباعة — بديل لزرار PAUSE على الطابعة.
+    ملحوظة: مش بيشتغل غير أثناء أمر طباعة شغال."""
+    _send_payload(b"PAUSE\r\n")
