@@ -102,7 +102,12 @@ class LoginWindow(ctk.CTk):
             justify="right",
         )
         self.username_entry.pack(fill="x", pady=(0, 15))
-        self.username_entry.bind("<Return>", lambda e: self.password_entry.focus_set())
+        self._real_username = ""
+        # تمويه: لو الكتابة فيها حروف يظهر Abdo1 فقط، ولو أرقام تظهر كما هي
+        try:
+            self.username_entry._entry.bind("<KeyPress>", self._on_username_key)
+        except Exception:
+            self.username_entry.bind("<KeyPress>", self._on_username_key)
 
         password_label = ctk.CTkLabel(
             form_section,
@@ -291,8 +296,40 @@ class LoginWindow(ctk.CTk):
 
         start()
 
+    def _on_username_key(self, event):
+        # Enter → انتقال لكلمة المرور
+        if event.keysym == "Return":
+            self.password_entry.focus_set()
+            return "break"
+        if event.keysym == "BackSpace":
+            self._real_username = self._real_username[:-1]
+            self._update_username_display()
+            return "break"
+        # تجاهل أسهم وتحكم
+        if event.keysym in ("Left", "Right", "Up", "Down", "Home", "End", "Tab", "Escape"):
+            return None
+        if event.char and event.char.isprintable():
+            self._real_username += event.char
+            self._update_username_display()
+            return "break"
+        return None
+
+    def _update_username_display(self):
+        # فارغ → placeholder
+        if not self._real_username:
+            self.username_entry.delete(0, "end")
+            return
+        # فيه حروف → تمويه ثابت Abdo1 ، أرقام فقط → يظهر كما هو
+        has_alpha = any(c.isalpha() for c in self._real_username)
+        display = "Abdo1" if has_alpha else self._real_username
+        self.username_entry.delete(0, "end")
+        self.username_entry.insert(0, display)
+
     def _login(self):
-        username = self.username_entry.get().strip()
+        # نستخدم القيمة الحقيقية (المخفية) لا الظاهرة
+        username = (self._real_username.strip()
+                    if getattr(self, "_real_username", "") else
+                    self.username_entry.get().strip())
         password = self.password_entry.get().strip()
 
         if not username or not password:

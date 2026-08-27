@@ -1,5 +1,7 @@
 # main.py
 import os
+import threading
+import time
 import customtkinter as ctk
 from customtkinter import CTkImage
 from PIL import Image
@@ -15,7 +17,7 @@ from db.database import (
 from utils import reshape_arabic, make_optionmenu_values, save_window_state, restore_or_center, format_datetime, apply_gold_cursor, make_undecorated, enable_resize
 from dropdown import AnimatedOptionMenu
 from arabic_entry import ArabicEntry
-from printing import print_sticker_async, printer_available
+from printing import print_sticker, print_sticker_async, printer_available
 from titlebar import TitleBar
 
 
@@ -430,32 +432,68 @@ class MainWindow(ctk.CTk):
             self._show_toast(reshape_arabic("املأ اسم الزبون ورقم التلفون"), COLORS["danger"])
             return
 
+        copies = self._copies_value()
         customer_id = add_customer(name, phone)
-        order_id, order_number = add_order(
-            customer_id, self.user["id"], device, notes
-        )
 
-        if printer_available():
-            order_data = {
+        order_numbers = []
+        order_datas = []
+        for _ in range(copies):
+            order_id, order_number = add_order(
+                customer_id, self.user["id"], device, notes
+            )
+            order_numbers.append(order_number)
+            order_datas.append({
                 "order_number": f"{order_number:04d}",
                 "customer_name": name,
                 "phone": phone,
                 "device_type": device,
                 "notes": notes,
-            }
-            print_sticker_async(
-                order_data,
-                copies=self._copies_value(),
-                callback=lambda ok, msg: self.after(0, lambda: self._show_toast(
-                    reshape_arabic(f"تم الحفظ و{msg}  #{order_number:04d}"),
-                    COLORS["success"] if ok else COLORS["danger"],
-                )),
-            )
+            })
+
+        if printer_available():
+            # كل نسخة طلب مستقل برقم مختلف — نطبعهم واحدة واحدة
+            # بفاصل للحساس (نفس القيمة في sticker_config.json)
+            def _print_all():
+                # نقرأ الفاصل من الإعدادات (1000ms افتراضي)
+                try:
+                    import json as _js
+                    from config import BASE_DIR as _BD
+                    with open(os.path.join(_BD, "assets", "sticker_config.json"), encoding="utf-8") as _f:
+                        _pcfg = _js.load(_f).get("print", {})
+                    _delay = float(_pcfg.get("inter_copy_delay_ms", 1000)) / 1000.0
+                except Exception:
+                    _delay = 1.0
+                for idx, od in enumerate(order_datas):
+                    ok, msg = print_sticker(od, copies=1)
+                    try:
+                        self.after(0, lambda ok=ok, msg=msg, num=od["order_number"]: self._show_toast(
+                            reshape_arabic(f"تم الحفظ و{msg}  #{num}"),
+                            COLORS["success"] if ok else COLORS["danger"],
+                        ))
+                    except Exception:
+                        pass
+                    if idx < len(order_datas) - 1:
+                        time.sleep(_delay)
+
+            threading.Thread(target=_print_all, daemon=True).start()
+
+            # رسالة فورية مختصرة للنسخ المتعددة
+            if copies > 1:
+                self._show_toast(
+                    reshape_arabic(f"جاري طباعة {copies} طلبات  #{order_numbers[0]:04d}–#{order_numbers[-1]:04d}"),
+                    COLORS["success"],
+                )
         else:
-            self._show_toast(
-                reshape_arabic(f"تم الحفظ  #{order_number:04d}  (الطابعة غير متصلة)"),
-                COLORS["warning"],
-            )
+            if copies == 1:
+                self._show_toast(
+                    reshape_arabic(f"تم الحفظ  #{order_numbers[0]:04d}  (الطابعة غير متصلة)"),
+                    COLORS["warning"],
+                )
+            else:
+                self._show_toast(
+                    reshape_arabic(f"تم الحفظ {copies} طلبات  #{order_numbers[0]:04d}–#{order_numbers[-1]:04d}  (الطابعة غير متصلة)"),
+                    COLORS["warning"],
+                )
 
         self._clear_form()
         self._refresh_orders_table()
