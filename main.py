@@ -280,7 +280,7 @@ class MainWindow(ctk.CTk):
         self.price_switch_row.grid(row=10, column=0, sticky="ew", pady=(6, 4))
         self.price_switch = ctk.CTkSwitch(
             self.price_switch_row,
-            text=reshape_arabic("طباعة سعر بحث"),
+            text=reshape_arabic("طباعة سعر "),
             font=FONT_SMALL,
             variable=self.price_var,
             command=self._on_price_switch,
