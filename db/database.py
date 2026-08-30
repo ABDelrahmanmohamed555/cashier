@@ -63,8 +63,14 @@ def init_db():
 
 def authenticate(username, password):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM employees WHERE role = 'admin' LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        admin_id = row[0] if row else 1
         return {
-            "id": 0,
+            "id": admin_id,
             "name": "admin",
             "username": ADMIN_USERNAME,
             "password": ADMIN_PASSWORD,
@@ -83,13 +89,13 @@ def authenticate(username, password):
     return None
 
 
-def get_next_order_number():
+def get_next_order_number(date_str=None):
     conn = get_connection()
     cursor = conn.cursor()
-    today = datetime.now().strftime("%Y-%m-%d")
+    target_date = date_str or datetime.now().strftime("%Y-%m-%d")
     cursor.execute(
         "SELECT COALESCE(MAX(order_number), 0) + 1 FROM orders WHERE DATE(created_at) = ?",
-        (today,),
+        (target_date,),
     )
     result = cursor.fetchone()[0]
     conn.close()
@@ -109,11 +115,11 @@ def add_customer(name, phone):
     return customer_id
 
 
-def add_order(customer_id, employee_id, device_type, notes=""):
+def add_order(customer_id, employee_id, device_type, notes="", created_at=None):
     conn = get_connection()
     cursor = conn.cursor()
-    order_number = get_next_order_number()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    order_number = get_next_order_number(created_at[:10] if created_at else None)
+    now = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         "INSERT INTO orders (order_number, customer_id, employee_id, device_type, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         (order_number, customer_id, employee_id, device_type, notes, now),

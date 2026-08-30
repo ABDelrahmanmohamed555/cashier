@@ -221,7 +221,7 @@ class MainWindow(ctk.CTk):
         self._create_field(form_body, "ملاحظات", 6)
         self.notes_entry = ArabicEntry(
             form_body,
-            placeholder=reshape_arabic("اختياري"),
+            placeholder=reshape_arabic(" "),
             font=FONT_BODY,
             height=48,
             corner_radius=8,
@@ -235,7 +235,7 @@ class MainWindow(ctk.CTk):
 
         self._create_field(form_body, "عدد نسخ الطباعة", 8)
         copies_row = ctk.CTkFrame(form_body, fg_color="transparent", height=48)
-        copies_row.grid(row=9, column=0, sticky="ew", pady=(0, 15))
+        copies_row.grid(row=9, column=0, sticky="ew", pady=(0, 6))
         copies_row.grid_propagate(False)
         copies_row.columnconfigure(0, weight=1)
 
@@ -274,6 +274,58 @@ class MainWindow(ctk.CTk):
         )
         down_btn.pack(side="top", fill="x", pady=(2, 0))
 
+        # --- سويتش طباعة سعر بحث ---
+        self.price_var = ctk.BooleanVar(value=False)
+        self.price_switch_row = ctk.CTkFrame(form_body, fg_color="transparent")
+        self.price_switch_row.grid(row=10, column=0, sticky="ew", pady=(6, 4))
+        self.price_switch = ctk.CTkSwitch(
+            self.price_switch_row,
+            text=reshape_arabic("طباعة سعر بحث"),
+            font=FONT_SMALL,
+            variable=self.price_var,
+            command=self._on_price_switch,
+            progress_color=COLORS["accent"],
+            button_color=COLORS["text_white"],
+            button_hover_color=COLORS["text_light"],
+            fg_color=COLORS["bg_input"],
+            text_color=COLORS["text_light"],
+        )
+        self.price_switch.pack(side="right")
+        # صلاحيات أدمن: السويتش متاح فقط للأدمن — الموظف يراه معطّل
+        # لو أردت إخفاءه تماما للموظف استبدل pass بـ self.price_switch_row.grid_remove()
+        is_admin = self.user.get("role") == "admin"
+        if not is_admin:
+            # حاليا يظل ظاهر للكل لكن يمكنك تعطيله:
+            # self.price_switch.configure(state="disabled")
+            pass
+
+        self.price_entry_frame = ctk.CTkFrame(form_body, fg_color="transparent")
+        self.price_entry_frame.grid(row=11, column=0, sticky="ew", pady=(0, 8))
+        self.price_entry_frame.grid_remove()
+        self.price_entry_frame.columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.price_entry_frame,
+            text=reshape_arabic("السعر (جنيه)"),
+            font=FONT_SMALL,
+            text_color=COLORS["text_light"],
+            anchor="e",
+        ).grid(row=0, column=0, sticky="e", pady=(0, 4))
+        self.price_entry = ctk.CTkEntry(
+            self.price_entry_frame,
+            placeholder_text=reshape_arabic("مثال: 250"),
+            font=FONT_BODY,
+            height=42,
+            corner_radius=8,
+            border_width=1,
+            border_color=COLORS["border"],
+            fg_color=COLORS["bg_input"],
+            text_color=COLORS["text_white"],
+            placeholder_text_color=COLORS["text_light"],
+            justify="center",
+        )
+        self.price_entry.grid(row=1, column=0, sticky="ew")
+        self.price_entry.bind("<KeyRelease>", self._on_price_typed)
+
         form_body.columnconfigure(0, weight=1)
 
         order_num_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
@@ -286,6 +338,19 @@ class MainWindow(ctk.CTk):
             text_color=COLORS["accent"],
         )
         self.order_number_label.pack(side="right")
+
+        save_btn = ctk.CTkButton(
+            form_frame,
+            text=reshape_arabic("حفظ و طباعة"),
+            font=FONT_BODY_BOLD,
+            height=48,
+            corner_radius=8,
+            fg_color=COLORS["success"],
+            hover_color=COLORS["success_hover"],
+            text_color=COLORS["text_white"],
+            command=self._save_order,
+        )
+        save_btn.pack(fill="x", padx=20, pady=(0, 10))
 
         btn_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
         btn_frame.pack(fill="x", padx=20, pady=(0, 15))
@@ -306,19 +371,19 @@ class MainWindow(ctk.CTk):
         )
         clear_btn.pack(side="right", padx=(8, 0))
 
-        save_btn = ctk.CTkButton(
+        external_btn = ctk.CTkButton(
             btn_frame,
-            text=reshape_arabic("حفظ و طباعة"),
+            text=reshape_arabic("خارجي"),
             font=FONT_BODY_BOLD,
-            width=160,
+            width=230,
             height=48,
             corner_radius=8,
-            fg_color=COLORS["success"],
-            hover_color=COLORS["success_hover"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
             text_color=COLORS["text_white"],
-            command=self._save_order,
+            command=self._open_external_window,
         )
-        save_btn.pack(side="right")
+        external_btn.pack(side="right")
 
     def _create_field(self, parent, text, row):
         label = ctk.CTkLabel(
@@ -421,11 +486,14 @@ class MainWindow(ctk.CTk):
             ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=FONT_BODY_BOLD,
                          text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=11)
 
-    def _save_order(self):
+    def _save_order(self, external=False):
         name = self.customer_name.get().strip()
         phone = self.customer_phone.get().strip()
-        device_display = self.device_type.get()
-        device = self._device_map.get(device_display, device_display)
+        if external:
+            device = "خارجي"
+        else:
+            device_display = self.device_type.get()
+            device = self._device_map.get(device_display, device_display)
         notes = self.notes_entry.get().strip()
 
         if not name or not phone:
@@ -433,6 +501,13 @@ class MainWindow(ctk.CTk):
             return
 
         copies = self._copies_value()
+        # سعر البحث (لو السويتش شغال)
+        price_val = self._get_price_value()
+        if self.price_var.get() and not price_val:
+            self._show_toast(reshape_arabic("ادخل سعر البحث أولاً"), COLORS["warning"])
+            self.price_entry.focus_set()
+            return
+        price_text = f"{price_val} جنيه" if price_val else ""
         customer_id = add_customer(name, phone)
 
         order_numbers = []
@@ -442,13 +517,16 @@ class MainWindow(ctk.CTk):
                 customer_id, self.user["id"], device, notes
             )
             order_numbers.append(order_number)
-            order_datas.append({
+            od = {
                 "order_number": f"{order_number:04d}",
                 "customer_name": name,
                 "phone": phone,
                 "device_type": device,
                 "notes": notes,
-            })
+            }
+            if price_text:
+                od["price"] = price_text
+            order_datas.append(od)
 
         if printer_available():
             # كل نسخة طلب مستقل برقم مختلف — نطبعهم واحدة واحدة
@@ -474,6 +552,11 @@ class MainWindow(ctk.CTk):
                         pass
                     if idx < len(order_datas) - 1:
                         time.sleep(_delay)
+                # بعد انتهاء الطباعة: السويتش يتقفل تلقائي
+                try:
+                    self.after(0, self._reset_price_switch)
+                except Exception:
+                    pass
 
             threading.Thread(target=_print_all, daemon=True).start()
 
@@ -497,6 +580,103 @@ class MainWindow(ctk.CTk):
 
         self._clear_form()
         self._refresh_orders_table()
+
+    def _open_external_window(self):
+        win = ctk.CTkToplevel(self)
+        win.title("")
+        win.geometry("480x650")
+        win.configure(fg_color=COLORS["bg_dark"])
+        make_undecorated(win)
+        enable_resize(win, 420, 560)
+        restore_or_center(win, "external_order", 480, 650)
+        win.protocol("WM_DELETE_WINDOW", lambda: (save_window_state("external_order", win.geometry()), win.destroy()))
+        win.bind("<Escape>", lambda e: (save_window_state("external_order", win.geometry()), win.destroy()))
+
+        TitleBar(win, reshape_arabic(" "), lambda: (save_window_state("external_order", win.geometry()), win.destroy()), height=48).pack(fill="x")
+        win.attributes("-topmost", True)
+        win.after(200, lambda: win.attributes("-topmost", False))
+        win.grab_set()
+
+        container = ctk.CTkFrame(win, fg_color="transparent")
+        container.pack(expand=True, fill="both", padx=30, pady=20)
+
+        def _field_label(text):
+            lbl = ctk.CTkLabel(container, text=reshape_arabic(text), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e")
+            lbl.pack(fill="x", pady=(10, 4))
+            return lbl
+
+        _field_label("اسم الزبون")
+        name_entry = ArabicEntry(container, placeholder=reshape_arabic(" "), font=FONT_BODY, height=48, corner_radius=8, border_width=1, border_color=COLORS["border"], fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], placeholder_text_color=COLORS["text_light"])
+        name_entry.pack(fill="x")
+
+        _field_label("رقم التلفون")
+        phone_entry = ctk.CTkEntry(container, placeholder_text="01xxxxxxxxx", font=FONT_BODY, height=48, corner_radius=8, border_width=1, border_color=COLORS["border"], fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], placeholder_text_color=COLORS["text_light"], justify="right")
+        phone_entry.pack(fill="x")
+
+        _field_label("العنوان")
+        address_entry = ArabicEntry(container, placeholder=reshape_arabic(" "), font=FONT_BODY, height=48, corner_radius=8, border_width=1, border_color=COLORS["border"], fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], placeholder_text_color=COLORS["text_light"])
+        address_entry.pack(fill="x")
+
+        _field_label("نوع الجهاز")
+        dev_display, dev_map = make_optionmenu_values(DEVICE_TYPES)
+        device_menu = AnimatedOptionMenu(container, values=dev_display, font=FONT_BODY, dropdown_font=FONT_BODY, height=48, corner_radius=8, fg_color=COLORS["bg_input"], button_color=COLORS["accent"], button_hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"])
+        device_menu.pack(fill="x")
+        device_menu.set(dev_display[0] if dev_display else "")
+
+        _field_label("ملاحظات")
+        notes_entry = ArabicEntry(container, placeholder=reshape_arabic(" "), font=FONT_BODY, height=48, corner_radius=8, border_width=1, border_color=COLORS["border"], fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], placeholder_text_color=COLORS["text_light"])
+        notes_entry.pack(fill="x")
+
+        status_label = ctk.CTkLabel(container, text="", font=FONT_SMALL, text_color=COLORS["danger"])
+        status_label.pack(pady=(10, 0))
+
+        def do_send():
+            name = name_entry.get().strip()
+            phone = phone_entry.get().strip()
+            address = address_entry.get().strip()
+            dev_disp = device_menu.get()
+            device = dev_map.get(dev_disp, dev_disp)
+            notes = notes_entry.get().strip()
+            if not name or not phone or not address:
+                status_label.configure(text=reshape_arabic("املأ الاسم والرقم والعنوان"), text_color=COLORS["danger"])
+                return
+            # حفظ كطلب خارجي + إرسال واتس مباشر
+            full_notes = f"العنوان: {address}" + (f"\n{notes}" if notes else "")
+            try:
+                cid = add_customer(name, phone)
+                oid, onum = add_order(cid, self.user["id"], device, full_notes)
+                self._refresh_orders_table()
+            except Exception:
+                pass
+            # صياغة رسالة واتس
+            msg = f"طلب خارجي #{onum:04d}\nالاسم: {name}\nالرقم: {phone}\nالعنوان: {address}\nالجهاز: {device}\nملاحظات: {notes if notes else '-'}"
+            status_label.configure(text=reshape_arabic("جاري الإرسال..."), text_color=COLORS["text_light"])
+            send_btn.configure(state="disabled")
+
+            def worker():
+                try:
+                    import wa_send
+                    ok, err = wa_send.send_text_to_all(msg)
+                    def done():
+                        send_btn.configure(state="normal")
+                        if ok:
+                            status_label.configure(text=reshape_arabic("تم الإرسال ✓"), text_color=COLORS["success"])
+                            self._show_toast(reshape_arabic(f"تم إرسال الطلب الخارجي #{onum:04d}"), COLORS["success"])
+                            win.after(900, lambda: (save_window_state("external_order", win.geometry()), win.destroy()))
+                        else:
+                            status_label.configure(text=reshape_arabic(f"فشل الإرسال: {err}"), text_color=COLORS["danger"])
+                            self._show_toast(reshape_arabic("فشل إرسال الواتس"), COLORS["danger"])
+                    self.after(0, done)
+                except Exception as e:
+                    self.after(0, lambda: (send_btn.configure(state="normal"), status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        send_btn = ctk.CTkButton(container, text=reshape_arabic("إرسال"), font=FONT_BODY_BOLD, height=52, corner_radius=8, fg_color=COLORS["success"], hover_color=COLORS["success_hover"], text_color=COLORS["text_white"], command=do_send)
+        send_btn.pack(fill="x", pady=(20, 0))
+
+        name_entry._frame.focus_set()
+        win.bind("<Return>", lambda e: do_send())
 
     def _copies_value(self):
         """عدد النسخ من الخانة مع تقييد آمن (1..15)."""
@@ -525,6 +705,67 @@ class MainWindow(ctk.CTk):
             self.copies_entry.delete(0, "end")
             self.copies_entry.insert(0, "15")
 
+    def _on_price_switch(self):
+        """إظهار/إخفاء خانة السعر عند تغيير السويتش."""
+        if self.price_var.get():
+            self.price_entry_frame.grid()
+            self.after(100, lambda: self.price_entry.focus_set())
+        else:
+            self.price_entry_frame.grid_remove()
+            self.price_entry.delete(0, "end")
+
+    def _on_price_typed(self, *_):
+        """السماح بأرقام ونقطة واحدة فقط."""
+        txt = self.price_entry.get()
+        allowed = []
+        for ch in txt:
+            if ch.isdigit() or ch in ".,٫":
+                allowed.append(ch)
+        filtered = "".join(allowed)
+        filtered = filtered.replace("٫", ".").replace(",", ".")
+        if filtered.count(".") > 1:
+            parts = filtered.split(".")
+            filtered = parts[0] + "." + "".join(parts[1:])
+        # حد أقصى 7 خانات (مثال 9999999 أو 9999.99)
+        if len(filtered) > 10:
+            filtered = filtered[:10]
+        if filtered != txt:
+            self.price_entry.delete(0, "end")
+            if filtered:
+                self.price_entry.insert(0, filtered)
+
+    def _get_price_value(self):
+        """إرجاع السعر كنص رقمي إذا السويتش مفعل وإلا فارغ."""
+        if not getattr(self, "price_var", None) or not self.price_var.get():
+            return ""
+        try:
+            txt = self.price_entry.get().strip().replace(",", ".").replace("٫", ".")
+        except Exception:
+            return ""
+        if not txt:
+            return ""
+        try:
+            float(txt)
+        except ValueError:
+            return ""
+        if "." in txt:
+            txt = txt.rstrip("0").rstrip(".")
+        return txt
+
+    def _reset_price_switch(self):
+        """إقفال السويتش تلقائي بعد الطباعة."""
+        try:
+            if hasattr(self, "price_var"):
+                self.price_var.set(False)
+            if hasattr(self, "price_switch"):
+                self.price_switch.deselect()
+            if hasattr(self, "price_entry_frame"):
+                self.price_entry_frame.grid_remove()
+            if hasattr(self, "price_entry"):
+                self.price_entry.delete(0, "end")
+        except Exception:
+            pass
+
     def _clear_form(self):
         self.customer_name.delete(0, "end")
         self.customer_phone.delete(0, "end")
@@ -532,6 +773,7 @@ class MainWindow(ctk.CTk):
         self.copies_entry.delete(0, "end")
         self.copies_entry.insert(0, "1")
         self.device_type.set(reshape_arabic(DEVICE_TYPES[0]))
+        self._reset_price_switch()
         self.order_number_label.configure(
             text=reshape_arabic(f"رقم الطلب:  #{get_next_order_number():04d}")
         )

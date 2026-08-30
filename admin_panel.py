@@ -1,13 +1,14 @@
 # admin_panel.py
 import os
+import threading
 import customtkinter as ctk
 from customtkinter import CTkImage
 from PIL import Image
 from datetime import datetime
-from config import APP_NAME, FONT_ARABIC, FONT_ARABIC_BOLD, FONT_HEADER, FONT_BODY, FONT_BODY_BOLD, FONT_SMALL, COLORS, BASE_DIR, ADMIN_PASSWORD
+from config import APP_NAME, FONT_ARABIC, FONT_ARABIC_BOLD, FONT_HEADER, FONT_BODY, FONT_BODY_BOLD, FONT_SMALL, COLORS, BASE_DIR, ADMIN_PASSWORD, DEVICE_TYPES
 from arabic_entry import ArabicEntry
-from db.database import get_today_orders, update_order, delete_order
-from utils import reshape_arabic, save_window_state, restore_or_center, format_datetime, apply_gold_cursor, make_undecorated, enable_resize
+from db.database import get_today_orders, update_order, delete_order, add_customer, add_order
+from utils import reshape_arabic, save_window_state, restore_or_center, format_datetime, apply_gold_cursor, make_undecorated, enable_resize, make_optionmenu_values
 from dropdown import AnimatedOptionMenu
 
 
@@ -33,7 +34,20 @@ class AdminPanel(ctk.CTk):
 
     def _build_ui(self):
         self._build_header()
-        self._build_today_orders()
+        self._build_main_content()
+
+    def _build_main_content(self):
+        main_container = ctk.CTkFrame(self, fg_color="transparent")
+        main_container.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+
+        left_frame = ctk.CTkFrame(main_container, fg_color=COLORS["bg_card"], corner_radius=10)
+        left_frame.pack(side="right", fill="both", expand=True)
+
+        right_frame = ctk.CTkFrame(main_container, fg_color=COLORS["bg_card"], corner_radius=10)
+        right_frame.pack(side="left", fill="both", expand=True)
+
+        self._build_today_orders(left_frame)
+        self._build_right_panel(right_frame)
 
     def _build_header(self):
         _logo_path = os.path.join(BASE_DIR, "icon.png")
@@ -136,11 +150,11 @@ class AdminPanel(ctk.CTk):
             self.after_cancel(self._clock_timer)
         super().destroy()
 
-    def _build_today_orders(self):
+    def _build_today_orders(self, parent):
         table_frame = ctk.CTkFrame(
-            self, fg_color=COLORS["bg_card"], corner_radius=10
+            parent, fg_color="transparent", corner_radius=10
         )
-        table_frame.pack(fill="both", expand=True, padx=20, pady=15)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         header_bar = ctk.CTkFrame(
             table_frame, fg_color=COLORS["accent_dim"], height=48, corner_radius=0
@@ -197,6 +211,388 @@ class AdminPanel(ctk.CTk):
         self.orders_scroll.pack(fill="both", expand=True, padx=10, pady=(5, 10))
 
         self._refresh_table()
+
+    def _build_right_panel(self, parent):
+        form_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        form_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(
+            form_frame,
+            text=reshape_arabic("إضافة طلب جديد"),
+            font=FONT_HEADER,
+            text_color=COLORS["accent"],
+        ).pack(anchor="e", pady=(0, 20))
+
+        # Date field
+        ctk.CTkLabel(form_frame, text=reshape_arabic("التاريخ"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.date_entry = ctk.CTkEntry(
+            form_frame, font=FONT_BODY, height=42, corner_radius=6,
+            fg_color=COLORS["bg_input"], text_color=COLORS["text_white"],
+            border_color=COLORS["border"], justify="center",
+            placeholder_text="DD/MM/YYYY"
+        )
+        self.date_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
+        self.date_entry.pack(fill="x", pady=(0, 12))
+
+        # Name field
+        ctk.CTkLabel(form_frame, text=reshape_arabic("اسم الزبون"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.name_entry = ArabicEntry(form_frame, placeholder=reshape_arabic(" "), font=FONT_BODY, height=42, corner_radius=6,
+                                      fg_color=COLORS["bg_input"], text_color=COLORS["text_white"],
+                                      border_color=COLORS["border"])
+        self.name_entry.pack(fill="x", pady=(0, 12))
+
+        # Phone field
+        ctk.CTkLabel(form_frame, text=reshape_arabic("رقم التلفون"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.phone_entry = ctk.CTkEntry(
+            form_frame, font=FONT_BODY, height=42, corner_radius=6,
+            fg_color=COLORS["bg_input"], text_color=COLORS["text_white"],
+            border_color=COLORS["border"], justify="right",
+            placeholder_text=reshape_arabic("01xxxxxxxxx")
+        )
+        self.phone_entry.pack(fill="x", pady=(0, 12))
+
+        # Device type
+        ctk.CTkLabel(form_frame, text=reshape_arabic("نوع الجهاز"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.dev_display, self.dev_map = make_optionmenu_values(DEVICE_TYPES)
+        self.device_menu = AnimatedOptionMenu(
+            form_frame, values=self.dev_display, font=FONT_BODY, dropdown_font=FONT_BODY,
+            height=42, corner_radius=6,
+            fg_color=COLORS["bg_input"], button_color=COLORS["accent"],
+            button_hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"],
+        )
+        self.device_menu.set(self.dev_display[0])
+        self.device_menu.pack(fill="x", pady=(0, 12))
+
+        # Address (optional)
+        ctk.CTkLabel(form_frame, text=reshape_arabic("العنوان (اختياري)"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.address_entry = ArabicEntry(form_frame, placeholder=reshape_arabic(" "), font=FONT_BODY, height=42, corner_radius=6,
+                                         fg_color=COLORS["bg_input"], text_color=COLORS["text_white"],
+                                         border_color=COLORS["border"])
+        self.address_entry.pack(fill="x", pady=(0, 12))
+
+        # Notes (optional)
+        ctk.CTkLabel(form_frame, text=reshape_arabic("ملاحظات (اختياري)"), font=FONT_SMALL,
+                     text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+
+        self.notes_entry = ArabicEntry(form_frame, placeholder=reshape_arabic(" "), font=FONT_BODY, height=42, corner_radius=6,
+                                       fg_color=COLORS["bg_input"], text_color=COLORS["text_white"],
+                                       border_color=COLORS["border"])
+        self.notes_entry.pack(fill="x", pady=(0, 12))
+
+        # --- سويتش طباعة سعر بحث (صلاحيات أدمن) ---
+        self.price_var = ctk.BooleanVar(value=False)
+        self.price_switch_row = ctk.CTkFrame(form_frame, fg_color="transparent")
+        self.price_switch_row.pack(fill="x", pady=(6, 4))
+        self.price_switch = ctk.CTkSwitch(
+            self.price_switch_row,
+            text=reshape_arabic("طباعة سعر بحث"),
+            font=FONT_SMALL,
+            variable=self.price_var,
+            command=self._on_price_switch,
+            progress_color=COLORS["accent"],
+            button_color=COLORS["text_white"],
+            button_hover_color=COLORS["text_light"],
+            fg_color=COLORS["bg_input"],
+            text_color=COLORS["text_light"],
+        )
+        self.price_switch.pack(side="right")
+
+        self.price_entry_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        self.price_entry_frame.pack(fill="x", pady=(0, 8))
+        # مخفي في البداية
+        self.price_entry_frame.pack_forget()
+        ctk.CTkLabel(
+            self.price_entry_frame,
+            text=reshape_arabic("السعر (جنيه)"),
+            font=FONT_SMALL,
+            text_color=COLORS["text_light"],
+            anchor="e",
+        ).pack(fill="x", pady=(0, 4))
+        self.price_entry = ctk.CTkEntry(
+            self.price_entry_frame,
+            placeholder_text=reshape_arabic("مثال: 250"),
+            font=FONT_BODY,
+            height=42,
+            corner_radius=6,
+            fg_color=COLORS["bg_input"],
+            text_color=COLORS["text_white"],
+            placeholder_text_color=COLORS["text_light"],
+            border_color=COLORS["border"],
+            justify="center",
+        )
+        self.price_entry.pack(fill="x")
+        self.price_entry.bind("<KeyRelease>", self._on_price_typed)
+
+        # Status label
+        self.status_label = ctk.CTkLabel(form_frame, text="", font=FONT_SMALL, text_color=COLORS["danger"])
+        self.status_label.pack(pady=(10, 0))
+
+        # Buttons frame
+        btn_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=(20, 0))
+
+        # Save button
+        self.save_btn = ctk.CTkButton(
+            btn_frame,
+            text=reshape_arabic("حفظ"),
+            font=FONT_BODY_BOLD, height=42, corner_radius=6,
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_white"],
+            command=self._save_order
+        )
+        self.save_btn.pack(fill="x", pady=(0, 8))
+
+        # Print and Save button
+        self.print_save_btn = ctk.CTkButton(
+            btn_frame,
+            text=reshape_arabic("طباعة وحفظ"),
+            font=FONT_BODY_BOLD, height=42, corner_radius=6,
+            fg_color=COLORS["info"], hover_color=COLORS["info_hover"],
+            text_color=COLORS["text_white"],
+            command=self._print_and_save_order
+        )
+        self.print_save_btn.pack(fill="x", pady=(0, 8))
+
+        # Send via WhatsApp button
+        self.send_btn = ctk.CTkButton(
+            btn_frame,
+            text=reshape_arabic("إرسال واتساب"),
+            font=FONT_BODY_BOLD, height=42, corner_radius=6,
+            fg_color=COLORS["success"], hover_color=COLORS["success_hover"],
+            text_color=COLORS["text_white"],
+            command=self._send_whatsapp_order
+        )
+        self.send_btn.pack(fill="x")
+
+    def _validate_form(self):
+        name = self.name_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        date_str = self.date_entry.get().strip()
+
+        if not name:
+            self.status_label.configure(text=reshape_arabic("يرجى إدخال الاسم"))
+            return False
+        if not phone:
+            self.status_label.configure(text=reshape_arabic("يرجى إدخال رقم التلفون"))
+            return False
+        if not date_str:
+            self.status_label.configure(text=reshape_arabic("يرجى إدخال التاريخ"))
+            return False
+
+        # Validate date format
+        try:
+            day, month, year = date_str.split("/")
+            datetime(int(year), int(month), int(day))
+        except ValueError:
+            self.status_label.configure(text=reshape_arabic("تنسيق التاريخ غير صحيح (DD/MM/YYYY)"))
+            return False
+
+        self.status_label.configure(text="")
+        return True
+
+    def _get_form_data(self):
+        name = self.name_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        date_str = self.date_entry.get().strip()
+        dev_disp = self.device_menu.get()
+        device = self.dev_map.get(dev_disp, dev_disp)
+        address = self.address_entry.get().strip()
+        notes = self.notes_entry.get().strip()
+
+        day, month, year = date_str.split("/")
+        created_at = f"{year}-{month.zfill(2)}-{day.zfill(2)} {datetime.now().strftime('%H:%M:%S')}"
+
+        full_notes = ""
+        if address:
+            full_notes += f"العنوان: {address}"
+        if notes:
+            if full_notes:
+                full_notes += "\n"
+            full_notes += notes
+
+        return name, phone, device, full_notes, created_at
+
+    def _save_order(self):
+        if not self._validate_form():
+            return
+
+        name, phone, device, full_notes, created_at = self._get_form_data()
+
+        try:
+            cid = add_customer(name, phone)
+            oid, onum = add_order(cid, self.user["id"], device, full_notes, created_at)
+            self._refresh_table()
+            self.status_label.configure(text=reshape_arabic(f"تم حفظ الطلب #{onum:04d}"), text_color=COLORS["success"])
+            self._clear_form()
+        except Exception as e:
+            self.status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
+
+    def _print_and_save_order(self):
+        if not self._validate_form():
+            return
+        if self.price_var.get() and not self._get_price_value():
+            self.status_label.configure(text=reshape_arabic("ادخل سعر البحث أولاً"), text_color=COLORS["warning"])
+            self.price_entry.focus_set()
+            return
+
+        name, phone, device, full_notes, created_at = self._get_form_data()
+        price_val = self._get_price_value()
+        price_text = f"{price_val} جنيه" if price_val else ""
+
+        try:
+            cid = add_customer(name, phone)
+            oid, onum = add_order(cid, self.user["id"], device, full_notes, created_at)
+            self._refresh_table()
+            self.status_label.configure(text=reshape_arabic(f"تم حفظ الطلب #{onum:04d} - جاري الطباعة..."), text_color=COLORS["success"])
+
+            # Print the order مع السعر على السطر السفلي (+5% عن التاريخ)
+            from printing import print_sticker
+            order_data = {
+                "order_number": f"{onum:04d}",
+                "customer_name": name,
+                "phone": phone,
+                "device_type": device,
+                "notes": full_notes,
+            }
+            if price_text:
+                order_data["price"] = price_text
+
+            def _do_print():
+                ok, msg = print_sticker(order_data, copies=1)
+                def _done():
+                    if ok:
+                        self.status_label.configure(text=reshape_arabic(f"تمت الطباعة #{onum:04d}"), text_color=COLORS["success"])
+                    else:
+                        self.status_label.configure(text=reshape_arabic(msg), text_color=COLORS["danger"])
+                    self._reset_price_switch()
+                try:
+                    self.after(0, _done)
+                except Exception:
+                    pass
+            threading.Thread(target=_do_print, daemon=True).start()
+
+            self._clear_form()
+        except Exception as e:
+            self.status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
+
+    def _send_whatsapp_order(self):
+        if not self._validate_form():
+            return
+
+        name, phone, device, full_notes, created_at = self._get_form_data()
+
+        try:
+            cid = add_customer(name, phone)
+            oid, onum = add_order(cid, self.user["id"], device, full_notes, created_at)
+            self._refresh_table()
+            self.status_label.configure(text=reshape_arabic("جاري الإرسال..."), text_color=COLORS["text_light"])
+            self.send_btn.configure(state="disabled")
+
+            # Build WhatsApp message
+            address_part = ""
+            if self.address_entry.get().strip():
+                address_part = f"\nالعنوان: {self.address_entry.get().strip()}"
+            notes_part = ""
+            if self.notes_entry.get().strip():
+                notes_part = f"\nملاحظات: {self.notes_entry.get().strip()}"
+
+            msg = f"طلب خارجي #{onum:04d}\nالاسم: {name}\nالرقم: {phone}{address_part}\nالجهاز: {device}{notes_part}"
+
+            def worker():
+                try:
+                    import wa_send
+                    ok, err = wa_send.send_text_to_all(msg)
+                    def done():
+                        self.send_btn.configure(state="normal")
+                        if ok:
+                            self.status_label.configure(text=reshape_arabic("تم الإرسال ✓"), text_color=COLORS["success"])
+                            self._clear_form()
+                        else:
+                            self.status_label.configure(text=reshape_arabic(f"فشل الإرسال: {err}"), text_color=COLORS["danger"])
+                    self.after(0, done)
+                except Exception as e:
+                    self.after(0, lambda: (self.send_btn.configure(state="normal"),
+                                           self.status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])))
+
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            self.status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
+
+    def _on_price_switch(self):
+        if self.price_var.get():
+            self.price_entry_frame.pack(fill="x", pady=(0, 8))
+            self.after(100, lambda: self.price_entry.focus_set())
+        else:
+            self.price_entry_frame.pack_forget()
+            self.price_entry.delete(0, "end")
+
+    def _on_price_typed(self, *_):
+        txt = self.price_entry.get()
+        allowed = []
+        for ch in txt:
+            if ch.isdigit() or ch in ".,٫":
+                allowed.append(ch)
+        filtered = "".join(allowed)
+        filtered = filtered.replace("٫", ".").replace(",", ".")
+        if filtered.count(".") > 1:
+            parts = filtered.split(".")
+            filtered = parts[0] + "." + "".join(parts[1:])
+        if len(filtered) > 10:
+            filtered = filtered[:10]
+        if filtered != txt:
+            self.price_entry.delete(0, "end")
+            if filtered:
+                self.price_entry.insert(0, filtered)
+
+    def _get_price_value(self):
+        if not getattr(self, "price_var", None) or not self.price_var.get():
+            return ""
+        try:
+            txt = self.price_entry.get().strip().replace(",", ".").replace("٫", ".")
+        except Exception:
+            return ""
+        if not txt:
+            return ""
+        try:
+            float(txt)
+        except ValueError:
+            return ""
+        if "." in txt:
+            txt = txt.rstrip("0").rstrip(".")
+        return txt
+
+    def _reset_price_switch(self):
+        try:
+            if hasattr(self, "price_var"):
+                self.price_var.set(False)
+            if hasattr(self, "price_switch"):
+                self.price_switch.deselect()
+            if hasattr(self, "price_entry_frame"):
+                self.price_entry_frame.pack_forget()
+            if hasattr(self, "price_entry"):
+                self.price_entry.delete(0, "end")
+        except Exception:
+            pass
+
+    def _clear_form(self):
+        self.name_entry.delete(0, "end")
+        self.phone_entry.delete(0, "end")
+        self.address_entry.delete(0, "end")
+        self.notes_entry.delete(0, "end")
+        self.date_entry.delete(0, "end")
+        self.date_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
+        self.device_menu.set(self.dev_display[0])
+        self._reset_price_switch()
 
     def _refresh_table(self):
         for widget in self.orders_scroll.winfo_children():

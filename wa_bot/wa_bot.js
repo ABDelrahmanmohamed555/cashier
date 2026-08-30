@@ -77,8 +77,25 @@ async function cmdSend(number, file, caption) {
   process.exit(0);
 }
 
+async function cmdSendText(number, text) {
+  const client = makeClient(false);
+  console.log("جارٍ تشغيل واتس (headless) ...");
+  await client.initialize();
+  if (!client.info || !client.info.wid) {
+    console.error("الجلسة مش مقترنة بالتليفون بعد. أول مرة بس:");
+    console.error("  cd " + __dirname + " && node wa_bot.js pair");
+    process.exit(3);
+  }
+  console.log(`متصل كـ ${client.info.pushname}`);
+  const target = normalizeNumber(number);
+  console.log("بعتي نص لـ", target, "...");
+  await client.sendMessage(target, text);
+  console.log("اترسل ✓");
+  process.exit(0);
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
-// send <رقم> <ملف> [--caption "نص"]
+// send <رقم> <ملف> [--caption "نص"]  |  sendtext <رقم> <نص>
 if (cmd === "pair") {
   cmdPair().catch((e) => {
     console.error("خطأ:", e.message);
@@ -101,7 +118,18 @@ if (cmd === "pair") {
     console.error("خطأ:", e.message);
     process.exit(1);
   });
+} else if (cmd === "sendtext") {
+  const [number, ...textParts] = rest;
+  const text = textParts.join(" ");
+  if (!number || !text) {
+    console.error("الاستخدام: node wa_bot.js sendtext <رقم> <نص الرسالة>");
+    process.exit(2);
+  }
+  cmdSendText(number, text).catch((e) => {
+    console.error("خطأ:", e.message);
+    process.exit(1);
+  });
 } else {
-  console.error("استخدام:\n  node wa_bot.js pair [مسح QR أول مرة]\n  node wa_bot.js send <رقم> <ملف> [--caption نص]");
+  console.error("استخدام:\n  node wa_bot.js pair [مسح QR أول مرة]\n  node wa_bot.js send <رقم> <ملف> [--caption نص]\n  node wa_bot.js sendtext <رقم> <نص>");
   process.exit(2);
 }

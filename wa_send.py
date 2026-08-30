@@ -79,6 +79,37 @@ def send_direct(path, number, caption):
     return res.returncode == 0
 
 
+def send_text_direct(number, message):
+    """إرسال نص مباشر عبر البوت المحلي."""
+    cmd = [NODE, "wa_bot.js", "sendtext", number, message]
+    print("إرسال نص مباشر (headless) ...")
+    res = subprocess.run(cmd, cwd=WA_BOT_DIR, timeout=60)
+    return res.returncode == 0
+
+
+def send_text_to_all(message):
+    """إرسال نص لكل المستقبلين في wa_config.json."""
+    cfg = load_config()
+    recipients = parse_recipients(cfg.get("recipient", ""))
+    if not recipients:
+        return False, "لا يوجد مستقبلين في wa_config.json"
+    ok_all = True
+    last_err = ""
+    for to in recipients:
+        number, err = resolve_recipient(to)
+        if err:
+            print(f"✗ {to}: {err}")
+            ok_all = False
+            last_err = err
+            continue
+        print(f"→ إرسال نص لـ {number}")
+        ok = send_text_direct(number, message)
+        if not ok:
+            ok_all = False
+            last_err = f"فشل الإرسال لـ {number}"
+    return ok_all, last_err
+
+
 def send_manual(path, number, caption):
     """فتح واتس ويب برسالة جاهزة — تنتظرك تضغط إرسال بمفردك."""
     message = f"{caption}\n{os.path.basename(path)}"

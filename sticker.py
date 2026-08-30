@@ -233,11 +233,21 @@ def draw_sticker(cfg, order_data=None):
                 draw_auto_item(el, text, layout, font, ih, ls,
                                el["x_mm"] * scale * pmm, "rm")
 
+    # حساب حجم خط السعر (أكبر من التاريخ بـ 5%)
+    _date_fs = None
+    for _e in cfg.get("elements", []):
+        if _e.get("id") == "date":
+            _date_fs = float(_e.get("font_size_pt", 19))
+            break
+
     for el in pinned_els:
         t = el["type"]
         x = int(el["x_mm"] * scale * pmm)
         y = int(el["y_mm"] * scale * pmm)
         fs = int(el.get("font_size_pt", 10) * scale)
+        # فرض حجم السعر = تاريخ +5%
+        if el.get("id") == "price" and _date_fs is not None:
+            fs = int(round(_date_fs * 1.05 * scale))
         font = _get_font(fs, bold=el.get("bold", False))
         align = el.get("align", "right")
         target_w_px = target_w * SS
@@ -246,18 +256,36 @@ def draw_sticker(cfg, order_data=None):
         if t == "field_with_label":
             label = el["label_text"]
             raw_val = order_data.get(el["field"], "") if el["field"] else ""
+            # تنسيق السعر: إضافة "جنيه" لو غير موجود
+            if el.get("id") == "price" and raw_val:
+                _rv = str(raw_val).strip()
+                if "جنيه" not in _rv and "ج.م" not in _rv and "EGP" not in _rv:
+                    raw_val = f"{_rv} جنيه"
+                else:
+                    raw_val = _rv
             full_text = f"{label} {raw_val}" if raw_val else label
             if full_text:
-                _draw_fitted(draw, full_text, x, y, font, "rm",
-                             target_w_px, target_h_px, pmm,
-                             letter_spacing=_tracking_px(el, fs))
+                if align == "center":
+                    cx = target_w_px // 2
+                    _draw_fitted(draw, full_text, cx, y, font, "mm",
+                                 target_w_px, target_h_px, pmm,
+                                 letter_spacing=_tracking_px(el, fs))
+                else:
+                    _draw_fitted(draw, full_text, x, y, font, "rm",
+                                 target_w_px, target_h_px, pmm,
+                                 letter_spacing=_tracking_px(el, fs))
             if (not raw_val or el.get("underline_with_value", False)) and el.get("underline", False):
                 ul_px = int(el["underline_length_mm"] * scale * pmm)
                 line_y = y + int(fs * 1.33 * SS * 0.5)
-                label_w = draw.textlength(label, font=font, **_layout(label)) if label else 0
-                gap = 6 * SS if label else 0  # لو مفيش كلمة، الخط ينتهي عند x مباشرة
-                draw.line([(x - label_w - gap - ul_px, line_y),
-                           (x - label_w - gap, line_y)], fill="black", width=SS)
+                if align == "center":
+                    cx = target_w_px // 2
+                    draw.line([(cx - ul_px // 2, line_y),
+                               (cx + ul_px // 2, line_y)], fill="black", width=SS)
+                else:
+                    label_w = draw.textlength(label, font=font, **_layout(label)) if label else 0
+                    gap = 6 * SS if label else 0  # لو مفيش كلمة، الخط ينتهي عند x مباشرة
+                    draw.line([(x - label_w - gap - ul_px, line_y),
+                               (x - label_w - gap, line_y)], fill="black", width=SS)
 
         elif t == "image":
             logo = _logo_bw(el.get("path", LOGO_PATH))
@@ -273,6 +301,11 @@ def draw_sticker(cfg, order_data=None):
             text = _resolve_text(el, order_data, now_text)
             if not text:
                 continue
+            # تنسيق السعر للديناميك أيضا
+            if el.get("id") == "price" and text:
+                _rv = str(text).strip()
+                if "جنيه" not in _rv and "ج.م" not in _rv and "EGP" not in _rv:
+                    text = f"{_rv} جنيه"
             ls = _tracking_px(el, fs)
             if align == "center":
                 cx = target_w_px // 2

@@ -1,2 +1,3 @@
-2026/08/19-22:02:55.470 4062f Creating DB /home/kali/Desktop/cashier/wa_bot/session/session/Default/Session Storage since it was missing.
-2026/08/19-22:02:55.495 4062f Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/Session Storage/MANIFEST-000001
+2026/08/29-17:15:31.358 4360e Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/Session Storage/MANIFEST-000001
+2026/08/29-17:15:31.359 4360e Recovering log #3
+2026/08/29-17:15:31.360 4360e Reusing old log /home/kali/Desktop/cashier/wa_bot/session/session/Default/Session Storage/000003.log 

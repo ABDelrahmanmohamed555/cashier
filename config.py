@@ -63,6 +63,8 @@ COLORS = {
     "success_hover": "#3aa05e",
     "danger": "#c73e3e",
     "warning": "#c8943a",
+    "info": "#3a86c8",
+    "info_hover": "#5aa0e0",
     "border": "#2d3543",
     "border_light": "#3d4758",
 }

@@ -1,2 +1,3 @@
-2026/08/19-22:03:04.533 40630 Creating DB /home/kali/Desktop/cashier/wa_bot/session/session/Default/GCM Store since it was missing.
-2026/08/19-22:03:04.544 40630 Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/GCM Store/MANIFEST-000001
+2026/08/29-17:15:36.600 43613 Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/GCM Store/MANIFEST-000001
+2026/08/29-17:15:36.603 43613 Recovering log #3
+2026/08/29-17:15:36.603 43613 Reusing old log /home/kali/Desktop/cashier/wa_bot/session/session/Default/GCM Store/000003.log 

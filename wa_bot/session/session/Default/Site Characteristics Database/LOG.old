@@ -1,2 +1,3 @@
-2026/08/19-21:36:15.791 3cacf Creating DB /home/kali/Desktop/cashier/wa_bot/session/session/Default/Site Characteristics Database since it was missing.
-2026/08/19-21:36:15.842 3cacf Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/Site Characteristics Database/MANIFEST-000001
+2026/08/29-17:15:06.604 434d0 Reusing MANIFEST /home/kali/Desktop/cashier/wa_bot/session/session/Default/Site Characteristics Database/MANIFEST-000001
+2026/08/29-17:15:06.604 434d0 Recovering log #3
+2026/08/29-17:15:06.606 434d0 Reusing old log /home/kali/Desktop/cashier/wa_bot/session/session/Default/Site Characteristics Database/000003.log 
