@@ -312,7 +312,7 @@ class MainWindow(ctk.CTk):
         ).grid(row=0, column=0, sticky="e", pady=(0, 4))
         self.price_entry = ctk.CTkEntry(
             self.price_entry_frame,
-            placeholder_text=reshape_arabic("مثال: 250"),
+            placeholder_text=reshape_arabic(" "),
             font=FONT_BODY,
             height=42,
             corner_radius=8,
@@ -961,13 +961,82 @@ class MainWindow(ctk.CTk):
             self.copies_entry.insert(0, "15")
 
     def _on_price_switch(self):
-        """إظهار/إخفاء خانة السعر عند تغيير السويتش."""
+        """إظهار/إخفاء خانة السعر بانيميشن سحب + نبضة السويتش."""
+        # إلغاء انيميشن سابق لو موجود
+        if not hasattr(self, "_price_anim_job"):
+            self._price_anim_job = None
+        if self._price_anim_job:
+            try:
+                self.after_cancel(self._price_anim_job)
+            except Exception:
+                pass
+            self._price_anim_job = None
+
         if self.price_var.get():
+            # سويتش بانيميشن (CTkSwitch يحرك الزر تلقائيا) + نبضة لون
+            try:
+                self.price_switch.configure(progress_color=COLORS["accent_hover"])
+                self.after(180, lambda: self.price_switch.configure(progress_color=COLORS["accent"]))
+            except Exception:
+                pass
+            # إظهار بانيميشن سحب لأسفل
             self.price_entry_frame.grid()
-            self.after(100, lambda: self.price_entry.focus_set())
+            self.price_entry_frame.update_idletasks()
+            target_h = self.price_entry_frame.winfo_reqheight() or 78
+            try:
+                self.price_entry_frame.grid_propagate(False)
+                self.price_entry_frame.configure(height=0)
+            except Exception:
+                pass
+
+            def _anim_show(step=0, steps=12):
+                t = (step + 1) / steps
+                eased = 1 - pow(1 - t, 3)
+                h = int(target_h * eased)
+                try:
+                    self.price_entry_frame.configure(height=h)
+                except Exception:
+                    return
+                if step + 1 < steps:
+                    self._price_anim_job = self.after(11, lambda: _anim_show(step + 1))
+                else:
+                    try:
+                        self.price_entry_frame.grid_propagate(True)
+                        self.price_entry_frame.configure(height=target_h)
+                        self.price_entry.focus_set()
+                    except Exception:
+                        pass
+                    self._price_anim_job = None
+            _anim_show()
         else:
-            self.price_entry_frame.grid_remove()
-            self.price_entry.delete(0, "end")
+            cur_h = 0
+            try:
+                cur_h = self.price_entry_frame.winfo_height() or self.price_entry_frame.winfo_reqheight() or 78
+                self.price_entry_frame.grid_propagate(False)
+                self.price_entry_frame.configure(height=cur_h)
+            except Exception:
+                pass
+
+            def _anim_hide(step=0, steps=12):
+                t = (step + 1) / steps
+                eased = 1 - pow(1 - t, 3)
+                h = int(cur_h * (1 - eased))
+                try:
+                    self.price_entry_frame.configure(height=max(0, h))
+                except Exception:
+                    return
+                if step + 1 < steps:
+                    self._price_anim_job = self.after(11, lambda: _anim_hide(step + 1))
+                else:
+                    try:
+                        self.price_entry_frame.grid_remove()
+                        self.price_entry_frame.grid_propagate(True)
+                        self.price_entry.delete(0, "end")
+                        self.price_switch.configure(progress_color=COLORS["accent"])
+                    except Exception:
+                        pass
+                    self._price_anim_job = None
+            _anim_hide()
 
     def _on_price_typed(self, *_):
         """السماح بأرقام ونقطة واحدة فقط."""
@@ -1008,14 +1077,56 @@ class MainWindow(ctk.CTk):
         return txt
 
     def _reset_price_switch(self):
-        """إقفال السويتش تلقائي بعد الطباعة."""
+        """إقفال السويتش تلقائي بعد الطباعة — بانيميشن."""
         try:
             if hasattr(self, "price_var"):
                 self.price_var.set(False)
             if hasattr(self, "price_switch"):
-                self.price_switch.deselect()
+                try:
+                    self.price_switch.deselect()
+                    self.price_switch.configure(progress_color=COLORS["accent"])
+                except Exception:
+                    pass
+            # لو الفريم ظاهر اعمل انيميشن اخفاء
+            if hasattr(self, "price_entry_frame") and self.price_entry_frame.winfo_manager():
+                try:
+                    if hasattr(self, "_price_anim_job") and self._price_anim_job:
+                        try:
+                            self.after_cancel(self._price_anim_job)
+                        except Exception:
+                            pass
+                    cur_h = self.price_entry_frame.winfo_height() or self.price_entry_frame.winfo_reqheight() or 78
+                    self.price_entry_frame.grid_propagate(False)
+                    self.price_entry_frame.configure(height=cur_h)
+
+                    def _anim_reset(step=0, steps=12):
+                        t = (step + 1) / steps
+                        eased = 1 - pow(1 - t, 3)
+                        h = int(cur_h * (1 - eased))
+                        try:
+                            self.price_entry_frame.configure(height=max(0, h))
+                        except Exception:
+                            return
+                        if step + 1 < steps:
+                            self._price_anim_job = self.after(11, lambda: _anim_reset(step + 1))
+                        else:
+                            try:
+                                self.price_entry_frame.grid_remove()
+                                self.price_entry_frame.grid_propagate(True)
+                                self.price_entry.delete(0, "end")
+                            except Exception:
+                                pass
+                            self._price_anim_job = None
+                    _anim_reset()
+                    return
+                except Exception:
+                    pass
             if hasattr(self, "price_entry_frame"):
-                self.price_entry_frame.grid_remove()
+                try:
+                    self.price_entry_frame.grid_remove()
+                    self.price_entry_frame.grid_propagate(True)
+                except Exception:
+                    pass
             if hasattr(self, "price_entry"):
                 self.price_entry.delete(0, "end")
         except Exception:

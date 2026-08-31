@@ -1,4 +1,5 @@
 # admin_panel.py
+import json
 import os
 import threading
 import customtkinter as ctk
@@ -26,9 +27,11 @@ class AdminPanel(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self._clock_timer = None
+        self._report_timer = None
         restore_or_center(self, "admin_window", 1200, 700)
         self.after(150, lambda: apply_gold_cursor(self))
         self._build_ui()
+        self.after(2000, self._start_report_scheduler)
         self.bind("<Escape>", lambda e: self._logout())
         self.protocol("WM_DELETE_WINDOW", self._logout)
 
@@ -110,10 +113,12 @@ class AdminPanel(ctk.CTk):
             command=self._open_search,
         ).pack(side="left", padx=(12, 0))
 
+        # زر ترس الإعدادات (بدلا من زر تغيير كلمة المرور المباشر)
         ctk.CTkButton(
             left_frame,
-            text=reshape_arabic("تغيير كلمة المرور"),
-            font=FONT_SMALL,
+            text="⚙",
+            font=(FONT_ARABIC_BOLD, 18),
+            width=36,
             height=30,
             corner_radius=6,
             fg_color="transparent",
@@ -121,7 +126,7 @@ class AdminPanel(ctk.CTk):
             border_color=COLORS["border"],
             hover_color=COLORS["bg_hover"],
             text_color=COLORS["text_light"],
-            command=self._change_password,
+            command=self._open_settings,
         ).pack(side="left", padx=(10, 0))
 
         ctk.CTkButton(
@@ -147,7 +152,15 @@ class AdminPanel(ctk.CTk):
     def destroy(self):
         save_window_state("admin_window", self.geometry())
         if self._clock_timer:
-            self.after_cancel(self._clock_timer)
+            try:
+                self.after_cancel(self._clock_timer)
+            except Exception:
+                pass
+        if getattr(self, "_report_timer", None):
+            try:
+                self.after_cancel(self._report_timer)
+            except Exception:
+                pass
         super().destroy()
 
     def _build_today_orders(self, parent):
@@ -373,6 +386,73 @@ class AdminPanel(ctk.CTk):
             command=self._send_whatsapp_order
         )
         self.send_btn.pack(fill="x")
+        # حمّل إعدادات التقارير للخلفية (حتى لو النافذة مغلقة)
+        try:
+            self.report_config = self._load_report_config()
+        except Exception:
+            self.report_config = {"enabled": False, "time": "23:59", "last_run": ""}
+
+    def _open_settings(self):
+        """نافذة الإعدادات (ترس بجانب خروج) — تحتوي التقارير + تغيير كلمة المرور — أدمن فقط."""
+        win = ctk.CTkToplevel(self)
+        win.title("")
+        win.geometry("520x640")
+        win.configure(fg_color=COLORS["bg_dark"])
+        make_undecorated(win)
+        enable_resize(win, 460, 520)
+        restore_or_center(win, "admin_settings", 520, 640)
+        win.protocol("WM_DELETE_WINDOW", lambda: (save_window_state("admin_settings", win.geometry()), win.destroy()))
+        win.bind("<Escape>", lambda e: (save_window_state("admin_settings", win.geometry()), win.destroy()))
+        from titlebar import TitleBar
+        TitleBar(win, reshape_arabic("الإعدادات"), lambda: (save_window_state("admin_settings", win.geometry()), win.destroy())).pack(fill="x")
+        win.transient(self)
+        win.grab_set()
+        win.attributes("-topmost", True)
+        win.after(200, lambda: win.attributes("-topmost", False))
+
+        container = ctk.CTkScrollableFrame(win, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=16, pady=12)
+
+        # --- كارت التقارير ---
+        self.report_config = self._load_report_config()
+        report_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
+        report_frame.pack(fill="x", pady=(0, 12), padx=4)
+        ctk.CTkLabel(report_frame, text=reshape_arabic("التقارير اليومية"), font=FONT_HEADER, text_color=COLORS["accent"]).pack(anchor="e", padx=14, pady=(12, 4))
+        ctk.CTkLabel(report_frame, text=reshape_arabic("حفظ PDF تلقائيا في مجلد reports بتاريخ اليوم حتى لو فشل واتساب"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right").pack(fill="x", padx=14, pady=(0, 8))
+
+        # سويتش التفعيل
+        self.report_enabled_var = ctk.BooleanVar(value=self.report_config.get("enabled", False))
+        self.report_switch = ctk.CTkSwitch(report_frame, text=reshape_arabic("تفعيل الحفظ التلقائي"), font=FONT_SMALL, variable=self.report_enabled_var, command=self._on_report_toggle, progress_color=COLORS["accent"], button_color=COLORS["text_white"], fg_color=COLORS["bg_input"], text_color=COLORS["text_light"])
+        self.report_switch.pack(anchor="e", padx=14, pady=(0, 8))
+
+        # وقت الجدولة — ظاهر دائما (إصلاح الخطأ: كان مخفي عندما يكون متوقف)
+        self.report_time_frame = ctk.CTkFrame(report_frame, fg_color="transparent")
+        self.report_time_frame.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkLabel(self.report_time_frame, text=reshape_arabic("وقت الإنشاء (HH:MM) — 24 ساعة"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", pady=(0, 4))
+        time_row = ctk.CTkFrame(self.report_time_frame, fg_color="transparent")
+        time_row.pack(fill="x")
+        self.report_time_entry = ctk.CTkEntry(time_row, font=FONT_BODY, height=42, corner_radius=8, fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], border_color=COLORS["border"], justify="center", placeholder_text="23:59")
+        self.report_time_entry.insert(0, self.report_config.get("time", "23:59"))
+        self.report_time_entry.pack(side="right", fill="x", expand=True, padx=(0, 8))
+        self.report_time_entry.bind("<KeyRelease>", self._on_report_time_typed)
+        ctk.CTkButton(time_row, text=reshape_arabic("حفظ"), font=FONT_SMALL, width=80, height=42, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=self._save_report_config).pack(side="right")
+
+        self.report_status = ctk.CTkLabel(report_frame, text="", font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right")
+        self.report_status.pack(fill="x", padx=14, pady=(6, 8))
+        if self.report_config.get("enabled"):
+            self.report_status.configure(text=reshape_arabic(f"مفعل — {self.report_config.get('time','23:59')} يوميا في reports/"), text_color=COLORS["success"])
+        else:
+            self.report_status.configure(text=reshape_arabic("متوقف — فعّل ثم احفظ الوقت"), text_color=COLORS["text_light"])
+
+        ctk.CTkButton(report_frame, text=reshape_arabic("إنشاء تقرير اليوم الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["info"], hover_color=COLORS["info_hover"], text_color=COLORS["text_white"], command=self._generate_report_now).pack(fill="x", padx=14, pady=(0, 12))
+        ctk.CTkLabel(report_frame, text=reshape_arabic("الملف يُحفظ باسم _YYYY-MM-DD.pdf في مجلد reports حتى لو فشل الإرسال"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 10))
+
+        # --- كارت كلمة المرور ---
+        pass_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
+        pass_frame.pack(fill="x", padx=4, pady=(0, 12))
+        ctk.CTkLabel(pass_frame, text=reshape_arabic("الأمان"), font=FONT_HEADER, text_color=COLORS["accent"]).pack(anchor="e", padx=14, pady=(12, 8))
+        ctk.CTkLabel(pass_frame, text=reshape_arabic("تغيير كلمة مرور الأدمن"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkButton(pass_frame, text=reshape_arabic("تغيير كلمة المرور"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=lambda: (win.destroy(), self._change_password())).pack(fill="x", padx=14, pady=(0, 14))
 
     def _validate_form(self):
         name = self.name_entry.get().strip()
@@ -529,12 +609,75 @@ class AdminPanel(ctk.CTk):
             self.status_label.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
 
     def _on_price_switch(self):
+        if not hasattr(self, "_price_anim_job"):
+            self._price_anim_job = None
+        if self._price_anim_job:
+            try:
+                self.after_cancel(self._price_anim_job)
+            except Exception:
+                pass
+            self._price_anim_job = None
         if self.price_var.get():
+            try:
+                self.price_switch.configure(progress_color=COLORS["accent_hover"])
+                self.after(180, lambda: self.price_switch.configure(progress_color=COLORS["accent"]))
+            except Exception:
+                pass
             self.price_entry_frame.pack(fill="x", pady=(0, 8))
-            self.after(100, lambda: self.price_entry.focus_set())
+            self.price_entry_frame.update_idletasks()
+            target_h = self.price_entry_frame.winfo_reqheight() or 78
+            try:
+                self.price_entry_frame.pack_propagate(False)
+                self.price_entry_frame.configure(height=0)
+            except Exception:
+                pass
+            def _anim_show(step=0, steps=12):
+                t = (step + 1) / steps
+                eased = 1 - pow(1 - t, 3)
+                h = int(target_h * eased)
+                try:
+                    self.price_entry_frame.configure(height=h)
+                except Exception:
+                    return
+                if step + 1 < steps:
+                    self._price_anim_job = self.after(11, lambda: _anim_show(step + 1))
+                else:
+                    try:
+                        self.price_entry_frame.pack_propagate(True)
+                        self.price_entry_frame.configure(height=target_h)
+                        self.price_entry.focus_set()
+                    except Exception:
+                        pass
+                    self._price_anim_job = None
+            _anim_show()
         else:
-            self.price_entry_frame.pack_forget()
-            self.price_entry.delete(0, "end")
+            cur_h = 0
+            try:
+                cur_h = self.price_entry_frame.winfo_height() or self.price_entry_frame.winfo_reqheight() or 78
+                self.price_entry_frame.pack_propagate(False)
+                self.price_entry_frame.configure(height=cur_h)
+            except Exception:
+                pass
+            def _anim_hide(step=0, steps=12):
+                t = (step + 1) / steps
+                eased = 1 - pow(1 - t, 3)
+                h = int(cur_h * (1 - eased))
+                try:
+                    self.price_entry_frame.configure(height=max(0, h))
+                except Exception:
+                    return
+                if step + 1 < steps:
+                    self._price_anim_job = self.after(11, lambda: _anim_hide(step + 1))
+                else:
+                    try:
+                        self.price_entry_frame.pack_forget()
+                        self.price_entry_frame.pack_propagate(True)
+                        self.price_entry.delete(0, "end")
+                        self.price_switch.configure(progress_color=COLORS["accent"])
+                    except Exception:
+                        pass
+                    self._price_anim_job = None
+            _anim_hide()
 
     def _on_price_typed(self, *_):
         txt = self.price_entry.get()
@@ -576,13 +719,222 @@ class AdminPanel(ctk.CTk):
             if hasattr(self, "price_var"):
                 self.price_var.set(False)
             if hasattr(self, "price_switch"):
-                self.price_switch.deselect()
+                try:
+                    self.price_switch.deselect()
+                    self.price_switch.configure(progress_color=COLORS["accent"])
+                except Exception:
+                    pass
+            if hasattr(self, "price_entry_frame") and self.price_entry_frame.winfo_manager():
+                try:
+                    if hasattr(self, "_price_anim_job") and self._price_anim_job:
+                        try:
+                            self.after_cancel(self._price_anim_job)
+                        except Exception:
+                            pass
+                    cur_h = self.price_entry_frame.winfo_height() or self.price_entry_frame.winfo_reqheight() or 78
+                    self.price_entry_frame.pack_propagate(False)
+                    self.price_entry_frame.configure(height=cur_h)
+
+                    def _anim_reset(step=0, steps=12):
+                        t = (step + 1) / steps
+                        eased = 1 - pow(1 - t, 3)
+                        h = int(cur_h * (1 - eased))
+                        try:
+                            self.price_entry_frame.configure(height=max(0, h))
+                        except Exception:
+                            return
+                        if step + 1 < steps:
+                            self._price_anim_job = self.after(11, lambda: _anim_reset(step + 1))
+                        else:
+                            try:
+                                self.price_entry_frame.pack_forget()
+                                self.price_entry_frame.pack_propagate(True)
+                                self.price_entry.delete(0, "end")
+                            except Exception:
+                                pass
+                            self._price_anim_job = None
+                    _anim_reset()
+                    return
+                except Exception:
+                    pass
             if hasattr(self, "price_entry_frame"):
-                self.price_entry_frame.pack_forget()
+                try:
+                    self.price_entry_frame.pack_forget()
+                    self.price_entry_frame.pack_propagate(True)
+                except Exception:
+                    pass
             if hasattr(self, "price_entry"):
                 self.price_entry.delete(0, "end")
         except Exception:
             pass
+
+    # ---------- التقارير اليومية: حفظ تلقائي في reports ----------
+    def _load_report_config(self):
+        p = os.path.join(BASE_DIR, "assets", "report_config.json")
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            return {"enabled": bool(d.get("enabled", False)), "time": str(d.get("time", "23:59")).strip() or "23:59", "last_run": str(d.get("last_run", ""))}
+        except Exception:
+            return {"enabled": False, "time": "23:59", "last_run": ""}
+
+    def _save_report_config_file(self, enabled, time_str, last_run=None):
+        p = os.path.join(BASE_DIR, "assets", "report_config.json")
+        try:
+            cur = self._load_report_config()
+            if last_run is None:
+                last_run = cur.get("last_run", "")
+            data = {"enabled": bool(enabled), "time": time_str.strip(), "last_run": last_run}
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.report_config = data
+        except Exception as e:
+            print("report_config save err", e)
+
+    def _on_report_toggle(self):
+        enabled = self.report_enabled_var.get()
+        # الوقت يبقى ظاهر دائما (إصلاح: كان مخفي عندما يكون متوقف)
+        try:
+            if not self.report_time_frame.winfo_manager():
+                self.report_time_frame.pack(fill="x", padx=12, pady=(0, 8))
+        except Exception:
+            pass
+        if enabled:
+            self.report_status.configure(text=reshape_arabic("اختر الوقت ثم اضغط حفظ"), text_color=COLORS["text_light"])
+            try:
+                self.report_time_entry.configure(state="normal", border_color=COLORS["border"])
+            except Exception:
+                pass
+        else:
+            self.report_status.configure(text=reshape_arabic("متوقف — سيتوقف الحفظ التلقائي"), text_color=COLORS["text_light"])
+            try:
+                self.report_time_entry.configure(state="normal", border_color=COLORS["border"])
+            except Exception:
+                pass
+            # حفظ فورا كمتوقف وإزالة cron
+            try:
+                self._save_report_config_file(False, self.report_time_entry.get().strip() or "23:59")
+            except Exception:
+                pass
+            self._remove_report_cron()
+
+    def _on_report_time_typed(self, *_):
+        txt = self.report_time_entry.get().strip()
+        # فلترة HH:MM
+        cleaned = "".join(c for c in txt if c.isdigit() or c == ":")[:5]
+        if cleaned.count(":") > 1:
+            parts = cleaned.split(":")
+            cleaned = parts[0] + ":" + "".join(parts[1:])
+        if cleaned != txt:
+            self.report_time_entry.delete(0, "end")
+            self.report_time_entry.insert(0, cleaned)
+
+    def _save_report_config(self):
+        time_str = self.report_time_entry.get().strip() or "23:59"
+        # تحقق HH:MM
+        try:
+            hh, mm = time_str.split(":")
+            hh, mm = int(hh), int(mm)
+            if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                raise ValueError
+            time_str = f"{hh:02d}:{mm:02d}"
+            self.report_time_entry.delete(0, "end")
+            self.report_time_entry.insert(0, time_str)
+        except Exception:
+            self.report_status.configure(text=reshape_arabic("صيغة الوقت غير صحيحة (HH:MM)"), text_color=COLORS["danger"])
+            return
+        enabled = self.report_enabled_var.get()
+        self._save_report_config_file(enabled, time_str, self.report_config.get("last_run", ""))
+        if enabled:
+            self._install_report_cron(time_str)
+            self.report_status.configure(text=reshape_arabic(f"مفعل — {time_str} يوميا في reports/"), text_color=COLORS["success"])
+            self.status_label.configure(text=reshape_arabic(f"تم حفظ جدولة التقارير {time_str}"), text_color=COLORS["success"])
+        else:
+            self._remove_report_cron()
+            self.report_status.configure(text=reshape_arabic("متوقف"), text_color=COLORS["text_light"])
+            self.status_label.configure(text=reshape_arabic("تم إيقاف التقارير"), text_color=COLORS["text_light"])
+
+    def _install_report_cron(self, time_str):
+        try:
+            import daily_report
+            daily_report.install_cron(time_str)
+        except Exception as e:
+            print("cron install err", e)
+
+    def _remove_report_cron(self):
+        try:
+            import subprocess
+            res = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+            existing = res.stdout if res.returncode == 0 else ""
+            if "/daily_report.py" not in existing:
+                return
+            lines = [ln for ln in existing.splitlines() if "/daily_report.py" not in ln]
+            new = "\n".join(lines) + ("\n" if lines else "")
+            subprocess.run(["crontab", "-"], input=new, text=True, check=True)
+            print("تمت إزالة جدولة التقارير من crontab")
+        except Exception as e:
+            print("cron remove err", e)
+
+    def _generate_report_now(self):
+        """إنشاء PDF اليوم وحفظه في reports/ حتى لو فشل واتساب — الاسم بتاريخ اليوم."""
+        self.report_status.configure(text=reshape_arabic("جاري إنشاء التقرير..."), text_color=COLORS["text_light"])
+        def worker():
+            try:
+                import daily_report
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                # دائما احفظ أولا
+                from daily_report import REPORTS_DIR, build_pdf, send_whatsapp
+                os.makedirs(REPORTS_DIR, exist_ok=True)
+                out_path = os.path.join(REPORTS_DIR, f"_{date_str}.pdf")
+                # لو الملف موجود لنفس اليوم، أعد كتابته
+                pdf_path, count = build_pdf(date_str, out_path)
+                # حدث last_run
+                try:
+                    self._save_report_config_file(self.report_enabled_var.get(), self.report_time_entry.get().strip() or "23:59", last_run=date_str)
+                except Exception:
+                    pass
+                # حاول الإرسال لكن لا تحذف الملف لو فشل
+                ok = False
+                try:
+                    ok = send_whatsapp(pdf_path)
+                except Exception as e:
+                    print("send err", e)
+                def done():
+                    if ok:
+                        self.report_status.configure(text=reshape_arabic(f"تم الحفظ والإرسال {date_str} ({count} طلب)"), text_color=COLORS["success"])
+                    else:
+                        self.report_status.configure(text=reshape_arabic(f"تم الحفظ في reports/_{date_str}.pdf ({count} طلب) — فشل واتساب لكن الملف محفوظ"), text_color=COLORS["warning"])
+                self.after(0, done)
+            except Exception as e:
+                self.after(0, lambda: self.report_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"]))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_report_scheduler(self):
+        """مجدول داخل التطبيق: كل 30 ثانية يفحص الوقت ويولد التقرير لو حان موعده."""
+        self._report_last_check = getattr(self, "_report_last_check", "")
+        self._check_report_schedule()
+        # كرر كل 30 ثانية
+        self._report_timer = self.after(30000, self._start_report_scheduler)
+
+    def _check_report_schedule(self):
+        try:
+            cfg = self._load_report_config()
+            if not cfg.get("enabled"):
+                return
+            now = datetime.now()
+            cur_time = now.strftime("%H:%M")
+            cur_date = now.strftime("%Y-%m-%d")
+            target = cfg.get("time", "23:59")
+            # تحقق إذا حان الوقت ولم يُنفذ اليوم
+            if cur_time == target and cfg.get("last_run") != cur_date:
+                print(f"[scheduler] حان وقت التقرير {target} — توليد {cur_date}")
+                # حدث last_run فورا لمنع التكرار
+                self._save_report_config_file(True, target, last_run=cur_date)
+                # ولد التقرير (سيحفظ ويحاول ارسال)
+                self._generate_report_now()
+        except Exception as e:
+            print("scheduler err", e)
 
     def _clear_form(self):
         self.name_entry.delete(0, "end")

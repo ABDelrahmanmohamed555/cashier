@@ -21,6 +21,7 @@ from sticker import _layout
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 WA_CONFIG_PATH = os.path.join(BASE_DIR, "assets", "wa_config.json")
+REPORT_CONFIG_PATH = os.path.join(BASE_DIR, "assets", "report_config.json")
 
 FONT = os.path.join(BASE_DIR, "assets", "fonts", "Tajawal-Regular.ttf")
 FONT_BOLD = os.path.join(BASE_DIR, "assets", "fonts", "Tajawal-Bold.ttf")
@@ -196,15 +197,49 @@ def load_wa_config():
     return _load_json_comments(WA_CONFIG_PATH)
 
 
+def load_report_config():
+    cfg = _load_json_comments(REPORT_CONFIG_PATH)
+    # افتراضي: معطل، الوقت 23:59
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "time": str(cfg.get("time", "23:59")).strip() or "23:59",
+        "report_dir": str(cfg.get("report_dir", "")).strip(),
+    }
+
+
+def save_report_config(enabled, time_str, report_dir=""):
+    os.makedirs(os.path.dirname(REPORT_CONFIG_PATH), exist_ok=True)
+    data = {"enabled": bool(enabled), "time": time_str.strip(), "report_dir": report_dir.strip()}
+    with open(REPORT_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
+
+
 def send_whatsapp(pdf_path, recipient=None, mode=None):
     cfg = load_wa_config()
-    recipient = recipient or cfg.get("recipient", "")
     mode = mode or cfg.get("mode", "direct")
-    if not recipient:
+    # تجميع المستقبلين (يدعم قائمة أو نص بفواصل)
+    recips = []
+    if recipient not in (None, ""):
+        if isinstance(recipient, (list, tuple)):
+            recips = [str(r).strip() for r in recipient if str(r).strip()]
+        else:
+            import re
+            recips = [p.strip() for p in re.split(r"[,;،\s]+", str(recipient)) if p.strip()]
+    else:
+        raw = cfg.get("recipient", "")
+        if isinstance(raw, (list, tuple)):
+            recips = [str(r).strip() for r in raw if str(r).strip()]
+        elif raw:
+            import re
+            recips = [p.strip() for p in re.split(r"[,;،\s]+", str(raw)) if p.strip()]
+    if not recips:
         print("خطأ: محدش الرقم/الاسم في assets/wa_config.json (recipient) أو بالـ --recipient")
         return False
     script = os.path.join(BASE_DIR, "wa_send.py")
-    cmd = [sys.executable, script, "--file", pdf_path, "--to", recipient]
+    cmd = [sys.executable, script, "--file", pdf_path]
+    for r in recips:
+        cmd.extend(["--to", str(r)])
     if mode == "manual":
         cmd.append("--manual")
     try:
@@ -215,27 +250,46 @@ def send_whatsapp(pdf_path, recipient=None, mode=None):
         return False
 
 
-def install_cron():
+def install_cron(time_str=None):
+    """تثبيت جدولة cron حسب الوقت المحدد من لوحة الأدمن (افتراضي 00:00)."""
     os.makedirs(REPORTS_DIR, exist_ok=True)
+    # لو لم يمرر وقت، اقرأه من report_config
+    if not time_str:
+        try:
+            time_str = load_report_config().get("time", "00:00")
+        except Exception:
+            time_str = "00:00"
+    # تحقق من الصيغة HH:MM
+    try:
+        hh, mm = [int(x) for x in str(time_str).strip().split(":")]
+        hh = max(0, min(23, hh))
+        mm = max(0, min(59, mm))
+    except Exception:
+        hh, mm = 0, 0
     cmd = " ".join([
         f"cd {BASE_DIR} &&",
         f"{sys.executable} {os.path.join(BASE_DIR, 'daily_report.py')} --send",
         f">> {os.path.join(REPORTS_DIR, 'cron.log')} 2>&1",
     ])
-    entry = f"0 0 * * * {cmd}\n"
+    entry = f"{mm} {hh} * * * {cmd}\n"
     try:
         crontab = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
         existing = crontab.stdout if crontab.returncode == 0 else ""
     except Exception:
         existing = ""
+    # احذف أي جدولة قديمة لنفس السكربت ثم أضف الجديدة (للسماح بتغيير الوقت)
     if "/daily_report.py" in existing:
-        print("الجدولة موجودة من قبل. خط crontab الحالي:")
-        print(existing)
-        return
+        lines = [ln for ln in existing.splitlines() if "/daily_report.py" not in ln]
+        existing = "\n".join(lines) + ("\n" if lines else "")
+        print("تم تحديث الجدولة القديمة.")
     new = existing + entry
-    subprocess.run(["crontab", "-"], input=new, text=True, check=True)
-    print("اتثبتت الجدولة في crontab:")
-    print(entry)
+    try:
+        subprocess.run(["crontab", "-"], input=new, text=True, check=True)
+        print("اتثبتت الجدولة في crontab:")
+        print(entry)
+    except Exception as e:
+        print(f"فشل تثبيت crontab: {e}")
+        print(f"أضف يدويا هذا السطر إلى crontab -e:\n{entry}")
 
 
 def main():
