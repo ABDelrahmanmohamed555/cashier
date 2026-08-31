@@ -469,22 +469,277 @@ class MainWindow(ctk.CTk):
             ).pack(pady=50)
             return
 
+        # تكبير خط قائمة الطلبات 15% فقط (الريزولوشن متناسق مع زيادة ارتفاع الصف)
+        _base_sz = FONT_BODY[1] if isinstance(FONT_BODY, tuple) and len(FONT_BODY) > 1 else 16
+        _scaled_sz = int(round(_base_sz * 1.15))
+        _font_body_15 = (FONT_ARABIC, _scaled_sz)
+        _font_body_bold_15 = (FONT_ARABIC_BOLD, _scaled_sz, "bold")
+        # ارتفاع الصف يزيد مع الخط لتجنب التداخل
+        _row_pady = int(round(11 * 1.15))  # 11 → 13
+
         for i, order in enumerate(orders):
             bg = COLORS["bg_hover"] if i % 2 == 0 else COLORS["bg_card"]
             row = ctk.CTkFrame(self.orders_scroll, fg_color=bg, corner_radius=6)
             row.pack(fill="x", pady=2)
 
-            notes = order["notes"] if order["notes"] else "-"
-            ctk.CTkLabel(row, text=reshape_arabic(notes), font=FONT_BODY,
-                         text_color=COLORS["text_light"], width=180).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=FONT_BODY,
-                         text_color=COLORS["text_white"], width=100).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=order["phone"], font=FONT_BODY,
-                         text_color=COLORS["text_light"], width=120).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=reshape_arabic(order["customer_name"]), font=FONT_BODY,
-                         text_color=COLORS["text_white"], width=140).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=FONT_BODY_BOLD,
-                         text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=11)
+            # إخفاء العنوان من عمود الملاحظات — يظهر فقط في نافذة التفاصيل
+            raw_notes = order["notes"] if order["notes"] else ""
+            display_notes = raw_notes
+            if raw_notes.strip().startswith("العنوان:"):
+                _parts = raw_notes.split("\n", 1)
+                display_notes = _parts[1].strip() if len(_parts) > 1 else ""
+            elif "العنوان:" in raw_notes:
+                _lines = raw_notes.split("\n")
+                _filtered = [l for l in _lines if not l.strip().startswith("العنوان:")]
+                display_notes = "\n".join(_filtered).strip()
+            if not display_notes.strip():
+                display_notes = "-"
+            ctk.CTkLabel(row, text=reshape_arabic(display_notes), font=_font_body_15,
+                         text_color=COLORS["text_light"], width=180).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=_font_body_15,
+                         text_color=COLORS["text_white"], width=100).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=order["phone"], font=_font_body_15,
+                         text_color=COLORS["text_light"], width=120).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=reshape_arabic(order["customer_name"]), font=_font_body_15,
+                         text_color=COLORS["text_white"], width=140).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=_font_body_bold_15,
+                         text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=_row_pady)
+
+            # 2 كليك شمال → نافذة تفاصيل بانيميشن سحب (بدون هوفر يسبب جليتش)
+            try:
+                row.bind("<Double-Button-1>", lambda e, o=order: self._show_order_details(o))
+                for ch in row.winfo_children():
+                    ch.bind("<Double-Button-1>", lambda e, o=order: (self._show_order_details(o), "break")[1])
+            except Exception:
+                pass
+
+    def _show_order_details(self, order):
+        """نافذة تفاصيل الطلب بانيميشن سحب جذاب (2 كليك شمال)."""
+        # --- تحليل البيانات ---
+        raw_notes = order.get("notes") or ""
+        address = ""
+        pure_notes = raw_notes
+        # العنوان محفوظ كـ "العنوان: ...\nباقي الملاحظات"
+        if raw_notes.strip().startswith("العنوان:"):
+            parts = raw_notes.split("\n", 1)
+            address = parts[0].replace("العنوان:", "").strip()
+            pure_notes = parts[1].strip() if len(parts) > 1 else ""
+        elif "العنوان:" in raw_notes:
+            try:
+                idx = raw_notes.index("العنوان:")
+                end = raw_notes.find("\n", idx)
+                if end != -1:
+                    address = raw_notes[idx + len("العنوان:"):end].strip()
+                    pure_notes = (raw_notes[:idx] + raw_notes[end + 1:]).strip()
+                else:
+                    address = raw_notes[idx + len("العنوان:"):].strip()
+                    pure_notes = raw_notes[:idx].strip()
+            except Exception:
+                address = ""
+        display_address = address if address else ""
+        display_notes = pure_notes.strip() if pure_notes.strip() else ""
+
+        created = order.get("created_at") or ""
+        date_str, time_str = "", ""
+        try:
+            dt = datetime.strptime(created[:19], "%Y-%m-%d %H:%M:%S")
+            date_str = dt.strftime("%Y/%m/%d")
+            time_str = dt.strftime("%I:%M %p")
+        except Exception:
+            try:
+                date_str = created[:10]
+                time_str = created[11:16]
+            except Exception:
+                date_str = created
+        order_no = f"#{order.get('order_number', 0):04d}"
+        cust = order.get("customer_name") or "-"
+        phone = order.get("phone") or "-"
+        device = order.get("device_type") or "-"
+
+        # --- إنشاء النافذة ---
+        win = ctk.CTkToplevel(self)
+        win.title("")
+        win.configure(fg_color=COLORS["bg_dark"])
+        make_undecorated(win)
+        enable_resize(win, 440, 500)
+        win.transient(self)
+        win.attributes("-topmost", True)
+        try:
+            win.attributes("-alpha", 0.0)
+        except Exception:
+            pass
+
+        W, H = 480, 560
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = (sw - W) // 2
+        y_final = (sh - H) // 2
+        # ابدأ بارتفاع صغير (سحب من الأعلى)
+        win.geometry(f"{W}x80+{x}+{y_final + H//2 - 40}")
+        win.update_idletasks()
+
+        # TitleBar (لا نعمل reshape هنا لأن TitleBar يعملها داخليا — تجنب عكس النص)
+        from titlebar import TitleBar
+        TitleBar(win, f"تفاصيل الطلب {order_no}", win.destroy).pack(fill="x")
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.protocol("WM_DELETE_WINDOW", win.destroy)
+
+        container = ctk.CTkFrame(win, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=14)
+
+        # بطاقة علوية برقم الطلب
+        top_card = ctk.CTkFrame(container, fg_color=COLORS["accent_dim"], corner_radius=10)
+        top_card.pack(fill="x", pady=(6, 12))
+        ctk.CTkLabel(top_card, text=order_no, font=(FONT_ARABIC_BOLD, 22, "bold"),
+                     text_color=COLORS["text_white"]).pack(pady=12)
+        ctk.CTkLabel(top_card, text=reshape_arabic(f"{date_str}  •  {time_str}"),
+                     font=FONT_SMALL, text_color=COLORS["text_white"]).pack(pady=(0, 10))
+
+        scroll = ctk.CTkScrollableFrame(container, fg_color="transparent", corner_radius=8,
+                                            scrollbar_fg_color=COLORS["bg_dark"],
+                                            scrollbar_button_color=COLORS["border"],
+                                            scrollbar_button_hover_color=COLORS["accent"])
+        scroll.pack(fill="both", expand=True)
+        # تحسين سلاسة السكرول: تخفيف الحركة ومنع القفز المباشر
+        try:
+            _canvas = scroll._parent_canvas
+            # تقليل مقدار القفزة الافتراضية
+            try:
+                _canvas.configure(yscrollincrement=8)
+            except Exception:
+                pass
+            _smooth = {"job": None}
+            def _smooth_to(target):
+                if _smooth.get("job"):
+                    try:
+                        win.after_cancel(_smooth["job"])
+                    except Exception:
+                        pass
+                start = _canvas.yview()[0]
+                target = max(0.0, min(1.0, target))
+                delta = target - start
+                if abs(delta) < 0.002:
+                    _canvas.yview_moveto(target)
+                    return
+                steps = 14
+                def _step(i=0):
+                    t = (i + 1) / steps
+                    eased = 1 - pow(1 - t, 3)
+                    pos = start + delta * eased
+                    try:
+                        _canvas.yview_moveto(pos)
+                    except Exception:
+                        return
+                    if i + 1 < steps:
+                        _smooth["job"] = win.after(10, lambda: _step(i + 1))
+                    else:
+                        _smooth["job"] = None
+                _step(0)
+            def _on_wheel(e):
+                try:
+                    if hasattr(e, "delta") and e.delta:
+                        d = -1 * (e.delta / 120)
+                    elif getattr(e, "num", None) == 4:
+                        d = -1
+                    elif getattr(e, "num", None) == 5:
+                        d = 1
+                    else:
+                        d = 0
+                    if d == 0:
+                        return "break"
+                    cur = _canvas.yview()[0]
+                    # كل لفة ~ 9.1% (7.9% +15% حساسية إضافية)
+                    target = cur + d * 0.091
+                    _smooth_to(target)
+                except Exception:
+                    pass
+                return "break"
+            # ربط على الكانفاس والفريم الداخلي (يغطي كل المحتوى)
+            _canvas.bind("<MouseWheel>", _on_wheel, add=True)
+            _canvas.bind("<Button-4>", _on_wheel, add=True)
+            _canvas.bind("<Button-5>", _on_wheel, add=True)
+            scroll.bind("<MouseWheel>", _on_wheel, add=True)
+            scroll.bind("<Button-4>", _on_wheel, add=True)
+            scroll.bind("<Button-5>", _on_wheel, add=True)
+            # حماية: عند اغلاق النافذة الغاء الانيميشن
+            win.bind("<Destroy>", lambda e: _smooth.update({"job": None}), add="+")
+        except Exception:
+            pass
+
+        detail_frames = []
+        # تكبير خط التفاصيل 20% إجمالي (10% +10% إضافية — الفريم الذهبي يبقى كما هو)
+        _d_small_sz = int(round(FONT_SMALL[1] * 1.20)) if isinstance(FONT_SMALL, tuple) and len(FONT_SMALL) > 1 else 18
+        _d_body_sz = int(round(FONT_BODY[1] * 1.20)) if isinstance(FONT_BODY, tuple) and len(FONT_BODY) > 1 else 19
+        _font_small_10 = (FONT_ARABIC, _d_small_sz)
+        _font_body_10 = (FONT_ARABIC, _d_body_sz)
+
+        def add_row(icon, label, value):
+            f = ctk.CTkFrame(scroll, fg_color=COLORS["bg_card"], corner_radius=8)
+            f.pack(fill="x", pady=5)
+            # label +10%
+            ctk.CTkLabel(f, text=reshape_arabic(label), font=_font_small_10,
+                         text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=12, pady=(8, 2))
+            # value +10%
+            val = value if (value and str(value).strip() and str(value).strip() != "-") else reshape_arabic("لا يوجد")
+            # لو القيمة عربية نشكلها
+            if any("\u0600" <= c <= "\u06FF" for c in str(val)):
+                val = reshape_arabic(str(val))
+            lbl = ctk.CTkLabel(f, text=val, font=_font_body_10, text_color=COLORS["text_white"],
+                               anchor="e", justify="right", wraplength=420)
+            lbl.pack(fill="x", padx=12, pady=(0, 10))
+            detail_frames.append(f)
+            return f
+
+        add_row("👤", "اسم الزبون", cust)
+        add_row("📞", "رقم التلفون", phone)
+        add_row("📍", "العنوان", display_address if display_address else "لا يوجد")
+        add_row("🔧", "نوع الجهاز", device)
+        add_row("📅", "التاريخ", date_str)
+        add_row("⏰", "الوقت", time_str)
+        add_row("🆔", "رقم الطلب", order_no)
+        add_row("📝", "ملاحظات", display_notes if display_notes else "لا يوجد")
+
+        # اخفاء التفاصيل مبدئيا لسحب متتالي
+        for f in detail_frames:
+            f.pack_forget()
+
+        # --- انيميشن سحب ---
+        win.grab_set()
+        win.after(150, lambda: win.attributes("-topmost", False))
+
+        def ease_out_cubic(t):
+            return 1 - pow(1 - t, 3)
+
+        def animate_win(step=0, steps=18):
+            t = step / steps
+            eased = ease_out_cubic(t)
+            h = int(80 + (H - 80) * eased)
+            y = int(y_final + (H - h) // 2 * (1 - eased))
+            alpha = 0.0 + 1.0 * eased
+            try:
+                win.geometry(f"{W}x{h}+{x}+{y}")
+                win.attributes("-alpha", alpha)
+            except Exception:
+                pass
+            if step < steps:
+                win.after(14, lambda: animate_win(step + 1, steps))
+            else:
+                # بعد انتهاء سحب النافذة — اسحب الصفوف واحد واحد
+                def show_rows(idx=0):
+                    if idx < len(detail_frames):
+                        detail_frames[idx].pack(fill="x", pady=5)
+                        # نبضة خفيفة
+                        try:
+                            f = detail_frames[idx]
+                            orig = f.cget("fg_color")
+                            f.configure(fg_color=COLORS["bg_hover"])
+                            win.after(120, lambda f=f, c=orig: f.configure(fg_color=c))
+                        except Exception:
+                            pass
+                        win.after(55, lambda: show_rows(idx + 1))
+                show_rows(0)
+
+        win.after(30, animate_win)
 
     def _save_order(self, external=False):
         name = self.customer_name.get().strip()
@@ -942,8 +1197,17 @@ class MainWindow(ctk.CTk):
                 row = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=6)
                 row.pack(fill="x", pady=2)
 
-                notes = order["notes"] if order["notes"] else "-"
-                ctk.CTkLabel(row, text=reshape_arabic(notes), font=FONT_BODY,
+                raw_notes = order["notes"] if order["notes"] else ""
+                _dn = raw_notes
+                if raw_notes.strip().startswith("العنوان:"):
+                    _p = raw_notes.split("\n", 1)
+                    _dn = _p[1].strip() if len(_p) > 1 else ""
+                elif "العنوان:" in raw_notes:
+                    _ln = raw_notes.split("\n")
+                    _dn = "\n".join([l for l in _ln if not l.strip().startswith("العنوان:")]).strip()
+                if not _dn.strip():
+                    _dn = "-"
+                ctk.CTkLabel(row, text=reshape_arabic(_dn), font=FONT_BODY,
                              text_color=COLORS["text_light"], width=160
                              ).pack(side="right", padx=8, pady=10)
                 ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=FONT_BODY,

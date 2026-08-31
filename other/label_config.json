@@ -1,14 +1,14 @@
 {
   "sticker_width_mm": 40.0,
   "sticker_height_mm": 29.4,
-  "gap_mm": 2.3,
+  "gap_mm": 1.5,
   "copies": 1,
   "elements": [
     {
       "id": "product",
       "label": "اسم المنتج",
-      "text": "2000 جنيه",
-      "font_size_pt": 29.0,
+      "text": "650 جنيه",
+      "font_size_pt": 33.0,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0
@@ -16,7 +16,7 @@
     {
       "id": "price",
       "label": "السعر",
-      "text": "ثيرموديسك\n\nترموستات\n\n",
+      "text": "",
       "font_size_pt": 10.0,
       "align": "center",
       "bold": true,
@@ -26,7 +26,7 @@
     {
       "id": "note",
       "label": "ملاحظة",
-      "text": "روزيتة\n\nتايمر",
+      "text": "",
       "font_size_pt": 23.0,
       "align": "center",
       "bold": false,

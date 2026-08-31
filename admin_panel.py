@@ -609,6 +609,16 @@ class AdminPanel(ctk.CTk):
             ).pack(pady=50)
             return
 
+        # تكبير خط قائمة طلبات الأدمن 5% فقط (مع زيادة ارتفاع الصف)
+        _base_sz = FONT_BODY[1] if isinstance(FONT_BODY, tuple) and len(FONT_BODY) > 1 else 16
+        _scaled_sz = int(round(_base_sz * 1.05))
+        _font_body_5 = (FONT_ARABIC, _scaled_sz)
+        _font_body_bold_5 = (FONT_ARABIC_BOLD, _scaled_sz, "bold")
+        _row_pady = int(round(11 * 1.05))  # 11 → 12
+        _small_sz = FONT_SMALL[1] if isinstance(FONT_SMALL, tuple) and len(FONT_SMALL) > 1 else 15
+        _scaled_small = int(round(_small_sz * 1.05))
+        _font_small_5 = (FONT_ARABIC, _scaled_small)
+
         for i, order in enumerate(orders):
             bg = COLORS["bg_hover"] if i % 2 == 0 else COLORS["bg_card"]
             row = ctk.CTkFrame(self.orders_scroll, fg_color=bg, corner_radius=6)
@@ -621,7 +631,7 @@ class AdminPanel(ctk.CTk):
             edit_btn = ctk.CTkButton(
                 actions,
                 text=reshape_arabic("تعديل"),
-                font=FONT_SMALL,
+                font=_font_small_5,
                 width=50,
                 height=28,
                 corner_radius=4,
@@ -635,7 +645,7 @@ class AdminPanel(ctk.CTk):
             del_btn = ctk.CTkButton(
                 actions,
                 text=reshape_arabic("حذف"),
-                font=FONT_SMALL,
+                font=_font_small_5,
                 width=50,
                 height=28,
                 corner_radius=4,
@@ -646,17 +656,27 @@ class AdminPanel(ctk.CTk):
             )
             del_btn.pack(side="right")
 
-            notes = order["notes"] if order["notes"] else "-"
-            ctk.CTkLabel(row, text=reshape_arabic(notes), font=FONT_BODY,
-                         text_color=COLORS["text_light"], width=160).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=FONT_BODY,
-                         text_color=COLORS["text_white"], width=100).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=order["phone"], font=FONT_BODY,
-                         text_color=COLORS["text_light"], width=120).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=reshape_arabic(order["customer_name"]), font=FONT_BODY,
-                         text_color=COLORS["text_white"], width=140).pack(side="right", padx=8, pady=11)
-            ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=FONT_BODY_BOLD,
-                         text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=11)
+            raw_notes = order["notes"] if order["notes"] else ""
+            display_notes = raw_notes
+            if raw_notes.strip().startswith("العنوان:"):
+                _parts = raw_notes.split("\n", 1)
+                display_notes = _parts[1].strip() if len(_parts) > 1 else ""
+            elif "العنوان:" in raw_notes:
+                _lines = raw_notes.split("\n")
+                _filtered = [l for l in _lines if not l.strip().startswith("العنوان:")]
+                display_notes = "\n".join(_filtered).strip()
+            if not display_notes.strip():
+                display_notes = "-"
+            ctk.CTkLabel(row, text=reshape_arabic(display_notes), font=_font_body_5,
+                         text_color=COLORS["text_light"], width=160).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=_font_body_5,
+                         text_color=COLORS["text_white"], width=100).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=order["phone"], font=_font_body_5,
+                         text_color=COLORS["text_light"], width=120).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=reshape_arabic(order["customer_name"]), font=_font_body_5,
+                         text_color=COLORS["text_white"], width=140).pack(side="right", padx=8, pady=_row_pady)
+            ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=_font_body_bold_5,
+                         text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=_row_pady)
 
     def _delete_order(self, order):
         confirm = ctk.CTkToplevel(self)
@@ -975,8 +995,17 @@ class AdminPanel(ctk.CTk):
                 row = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=6)
                 row.pack(fill="x", pady=2)
 
-                notes = order["notes"] if order["notes"] else "-"
-                ctk.CTkLabel(row, text=reshape_arabic(notes), font=FONT_BODY,
+                raw_notes = order["notes"] if order["notes"] else ""
+                _dn = raw_notes
+                if raw_notes.strip().startswith("العنوان:"):
+                    _p = raw_notes.split("\n", 1)
+                    _dn = _p[1].strip() if len(_p) > 1 else ""
+                elif "العنوان:" in raw_notes:
+                    _ln = raw_notes.split("\n")
+                    _dn = "\n".join([l for l in _ln if not l.strip().startswith("العنوان:")]).strip()
+                if not _dn.strip():
+                    _dn = "-"
+                ctk.CTkLabel(row, text=reshape_arabic(_dn), font=FONT_BODY,
                              text_color=COLORS["text_light"], width=160
                              ).pack(side="right", padx=8, pady=10)
                 ctk.CTkLabel(row, text=reshape_arabic(order["device_type"]), font=FONT_BODY,
