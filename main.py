@@ -13,6 +13,7 @@ from db.database import (
     get_next_order_number,
     get_today_orders,
     search_orders,
+    update_order,
 )
 from utils import reshape_arabic, make_optionmenu_values, save_window_state, restore_or_center, format_datetime, apply_gold_cursor, make_undecorated, enable_resize
 from dropdown import AnimatedOptionMenu
@@ -36,6 +37,9 @@ class MainWindow(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self._clock_timer = None
+        self._editing_order_id = None
+        self._edit_save_btn = None
+        self._edit_cancel_btn = None
         restore_or_center(self, "main_window", 1100, 750)
         self.after(150, lambda: apply_gold_cursor(self))
         self._build_ui()
@@ -161,12 +165,13 @@ class MainWindow(ctk.CTk):
         header_bar.pack(fill="x")
         header_bar.pack_propagate(False)
 
-        ctk.CTkLabel(
+        self._form_header_label = ctk.CTkLabel(
             header_bar,
             text=reshape_arabic("اضافة جهاز"),
             font=FONT_HEADER,
             text_color=COLORS["text_white"],
-        ).pack(expand=True)
+        )
+        self._form_header_label.pack(expand=True)
 
         form_body = ctk.CTkFrame(form_frame, fg_color="transparent")
         form_body.pack(fill="both", expand=True, padx=20, pady=15)
@@ -352,6 +357,39 @@ class MainWindow(ctk.CTk):
         )
         save_btn.pack(fill="x", padx=20, pady=(0, 10))
 
+        # --- أزرار التعديل (تظهر فقط عند تفعيل وضع التعديل بقلم التعديل) ---
+        self._edit_buttons_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        self._edit_buttons_frame.pack(fill="x", padx=20, pady=(0, 10))
+        self._edit_buttons_frame.pack_forget()  # مخفية افتراضياً
+
+        self._edit_save_btn = ctk.CTkButton(
+            self._edit_buttons_frame,
+            text=reshape_arabic("حفظ التعديل"),
+            font=FONT_BODY_BOLD,
+            height=48,
+            corner_radius=8,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_white"],
+            command=self._save_edit,
+        )
+        self._edit_save_btn.pack(fill="x", pady=(0, 8))
+
+        self._edit_cancel_btn = ctk.CTkButton(
+            self._edit_buttons_frame,
+            text=reshape_arabic("إلغاء التعديل"),
+            font=FONT_BODY,
+            height=40,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=COLORS["border"],
+            hover_color=COLORS["bg_hover"],
+            text_color=COLORS["text_light"],
+            command=self._cancel_edit,
+        )
+        self._edit_cancel_btn.pack(fill="x")
+
         btn_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
         btn_frame.pack(fill="x", padx=20, pady=(0, 15))
 
@@ -505,11 +543,81 @@ class MainWindow(ctk.CTk):
             ctk.CTkLabel(row, text=f"#{order['order_number']:04d}", font=_font_body_bold_15,
                          text_color=COLORS["accent"], width=60).pack(side="right", padx=8, pady=_row_pady)
 
+            # أزرار التحكم — في أقصى اليسار
+            # زر تعديل ذهبي (قلم واضح) + زر إعادة طباعة أخضر (سهم دائري)
+            edit_btn = ctk.CTkButton(
+                row,
+                text="✏",  # U+270F قلم أوضح وأسمك من ✎
+                font=("DejaVu Sans", 17, "bold"),
+                width=34,
+                height=34,
+                corner_radius=6,
+                fg_color=COLORS["accent"],
+                hover_color=COLORS["accent_hover"],
+                text_color=COLORS["text_white"],
+                command=lambda o=order: self._start_edit(o),
+            )
+            edit_btn.pack(side="left", padx=(8, 2), pady=6)
+
+            reprint_btn = ctk.CTkButton(
+                row,
+                text="↻",  # U+21BB سهم دائري لإعادة الطباعة
+                font=("DejaVu Sans", 18, "bold"),
+                width=34,
+                height=34,
+                corner_radius=6,
+                fg_color=COLORS["success"],
+                hover_color=COLORS["success_hover"],
+                text_color=COLORS["text_white"],
+                command=lambda o=order: self._reprint_order(o),
+            )
+            reprint_btn.pack(side="left", padx=(2, 8), pady=6)
+
             # 2 كليك شمال → نافذة تفاصيل بانيميشن سحب (بدون هوفر يسبب جليتش)
             try:
                 row.bind("<Double-Button-1>", lambda e, o=order: self._show_order_details(o))
                 for ch in row.winfo_children():
                     ch.bind("<Double-Button-1>", lambda e, o=order: (self._show_order_details(o), "break")[1])
+            except Exception:
+                pass
+            # منع الدبل كليك من فتح التفاصيل عند الضغط على أزرار التحكم
+            try:
+                edit_btn.bind("<Double-Button-1>", lambda e: "break")
+                reprint_btn.bind("<Double-Button-1>", lambda e: "break")
+            except Exception:
+                pass
+
+    def _reprint_order(self, order):
+        """إعادة طباعة نفس الطلب بنفس البيانات — زر أخضر بجانب التعديل."""
+        try:
+            order_data = {
+                "order_number": f"{order.get('order_number', 0):04d}",
+                "customer_name": order.get("customer_name") or "",
+                "phone": order.get("phone") or "",
+                "device_type": order.get("device_type") or "",
+                "notes": order.get("notes") or "",
+            }
+
+            if not printer_available():
+                self._show_toast(reshape_arabic("الطابعة غير متصلة"), COLORS["warning"])
+                return
+
+            self._show_toast(reshape_arabic(f"جاري إعادة الطباعة  #{order_data['order_number']}"), COLORS["info"])
+
+            def _do_print():
+                ok, msg = print_sticker(order_data, copies=1)
+                try:
+                    self.after(0, lambda: self._show_toast(
+                        reshape_arabic(f"{'تمت إعادة الطباعة' if ok else 'فشلت الطباعة'}  #{order_data['order_number']}"),
+                        COLORS["success"] if ok else COLORS["danger"],
+                    ))
+                except Exception:
+                    pass
+
+            threading.Thread(target=_do_print, daemon=True).start()
+        except Exception as e:
+            try:
+                self._show_toast(reshape_arabic(f"خطأ إعادة الطباعة: {e}"), COLORS["danger"])
             except Exception:
                 pass
 
@@ -742,6 +850,11 @@ class MainWindow(ctk.CTk):
         win.after(30, animate_win)
 
     def _save_order(self, external=False):
+        # لو في وضع التعديل، نوجه المستخدم لزر "حفظ التعديل"
+        if self._editing_order_id:
+            self._show_toast(reshape_arabic("أنت في وضع التعديل — استخدم زر «حفظ التعديل»"), COLORS["warning"])
+            return
+
         name = self.customer_name.get().strip()
         phone = self.customer_phone.get().strip()
         if external:
@@ -1140,6 +1253,102 @@ class MainWindow(ctk.CTk):
         self.copies_entry.insert(0, "1")
         self.device_type.set(reshape_arabic(DEVICE_TYPES[0]))
         self._reset_price_switch()
+        self.order_number_label.configure(
+            text=reshape_arabic(f"رقم الطلب:  #{get_next_order_number():04d}")
+        )
+        self._exit_edit_mode()
+
+    # ---------- وضع التعديل ----------
+
+    def _start_edit(self, order):
+        """تحميل بيانات الطلب في الخانات وتفعيل وضع التعديل."""
+        self._editing_order_id = order["id"]
+
+        # تحميل البيانات في الخانات
+        self.customer_name.delete(0, "end")
+        self.customer_name.insert(0, order["customer_name"])
+
+        self.customer_phone.delete(0, "end")
+        self.customer_phone.insert(0, order["phone"])
+
+        # ضبط نوع الجهاز (لو مش موجود في القائمة نضيفه مؤقتاً)
+        dev_display = reshape_arabic(order["device_type"])
+        if dev_display not in self.device_type._values:
+            self.device_type.configure(values=list(self.device_type._values) + [dev_display])
+            self._device_map[dev_display] = order["device_type"]
+        self.device_type.set(dev_display)
+
+        # الملاحظات: نعرضها كاملة (بما فيها العنوان لو موجود)
+        self.notes_entry.delete(0, "end")
+        self.notes_entry.insert(0, order["notes"] or "")
+
+        # إظهار أزرار التعديل
+        if self._edit_buttons_frame is not None:
+            self._edit_buttons_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+        # تحديث عنوان النموذج
+        try:
+            header_bar = self._form_header_label
+            header_bar.configure(text=reshape_arabic(f"تعديل الطلب #{order['order_number']:04d}"))
+        except Exception:
+            pass
+
+        self.order_number_label.configure(
+            text=reshape_arabic(f"تعديل الطلب:  #{order['order_number']:04d}")
+        )
+
+        self._show_toast(reshape_arabic(f"جاري تعديل الطلب #{order['order_number']:04d}"), COLORS["info"])
+        self.customer_name.focus_set()
+
+    def _save_edit(self):
+        """حفظ التعديلات بدون طباعة."""
+        if not self._editing_order_id:
+            return
+
+        name = self.customer_name.get().strip()
+        phone = self.customer_phone.get().strip()
+        if not name or not phone:
+            self._show_toast(reshape_arabic("املأ اسم الزبون ورقم التلفون"), COLORS["danger"])
+            return
+
+        device_display = self.device_type.get()
+        device = self._device_map.get(device_display, device_display)
+        notes = self.notes_entry.get().strip()
+
+        try:
+            ok = update_order(self._editing_order_id, name, phone, device, notes)
+            if ok:
+                self._show_toast(reshape_arabic("تم حفظ التعديل بنجاح"), COLORS["success"])
+            else:
+                self._show_toast(reshape_arabic("فشل حفظ التعديل"), COLORS["danger"])
+        except Exception as e:
+            self._show_toast(reshape_arabic(f"خطأ في الحفظ: {e}"), COLORS["danger"])
+            return
+
+        self._exit_edit_mode()
+        self._clear_form()
+        self._refresh_orders_table()
+
+    def _cancel_edit(self):
+        """إلغاء وضع التعديل والعودة لوضع الإضافة."""
+        self._exit_edit_mode()
+        self._clear_form()
+        self._show_toast(reshape_arabic("تم إلغاء التعديل"), COLORS["text_light"])
+
+    def _exit_edit_mode(self):
+        """إخفاء أزرار التعديل وإعادة النموذج لوضع الإضافة."""
+        self._editing_order_id = None
+        if self._edit_buttons_frame is not None:
+            try:
+                self._edit_buttons_frame.pack_forget()
+            except Exception:
+                pass
+        # إعادة عنوان النموذج
+        try:
+            header_bar = self._form_header_label
+            header_bar.configure(text=reshape_arabic("اضافة جهاز"))
+        except Exception:
+            pass
         self.order_number_label.configure(
             text=reshape_arabic(f"رقم الطلب:  #{get_next_order_number():04d}")
         )

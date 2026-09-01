@@ -113,9 +113,80 @@ class ArabicEntry(ctk.CTkFrame):
         return self._raw_text
 
     def delete(self, first, last="end"):
-        if first == 0 and last == "end":
+        # يدعم delete(0,"end") و delete(0,tk.END) و أي نطاق عام
+        try:
+            is_clear = (str(first) in ("0", "0.0") and str(last) in ("end", "END", "tk.END", ""))
+            if first == 0 and last == "end":
+                is_clear = True
+        except Exception:
+            is_clear = False
+        if is_clear or (str(first) == "0" and str(last) == "end"):
             self._raw_text = ""
             self._update_display()
+            return
+        # حالات عامة: حذف من first حتى last
+        try:
+            s = 0
+            e = len(self._raw_text)
+            if isinstance(first, int):
+                s = max(0, min(e, first))
+            elif isinstance(first, str) and first.isdigit():
+                s = max(0, min(e, int(first)))
+            elif str(first) == "end":
+                s = e
+            if isinstance(last, int):
+                e = max(0, min(len(self._raw_text), last))
+            elif isinstance(last, str) and last.isdigit():
+                e = max(0, min(len(self._raw_text), int(last)))
+            elif str(last) in ("end", "END"):
+                e = len(self._raw_text)
+            self._raw_text = self._raw_text[:s] + self._raw_text[e:]
+            self._update_display()
+        except Exception:
+            self._raw_text = ""
+            self._update_display()
+
+    def insert(self, index, string):
+        """إدخال نص برمجياً — يحاكي CTkEntry.insert(index, text)"""
+        if not string:
+            return
+        s = str(string)
+        try:
+            # end / END -> إلحاق
+            if str(index) in ("end", "END", "insert", "tk.END"):
+                self._raw_text += s
+            elif isinstance(index, int):
+                idx = max(0, min(len(self._raw_text), index))
+                self._raw_text = self._raw_text[:idx] + s + self._raw_text[idx:]
+            elif isinstance(index, str):
+                # "0" أو "0.0" أو رقم
+                idx_str = index.split(".")[0] if "." in index else index
+                try:
+                    idx = int(idx_str)
+                    idx = max(0, min(len(self._raw_text), idx))
+                    self._raw_text = self._raw_text[:idx] + s + self._raw_text[idx:]
+                except ValueError:
+                    self._raw_text += s
+            else:
+                self._raw_text += s
+        except Exception:
+            self._raw_text += s
+        self._update_display()
+
+    def focus_set(self):
+        try:
+            self._frame.focus_set()
+        except Exception:
+            try:
+                super().focus_set()
+            except Exception:
+                pass
+
+    def focus(self):
+        return self.focus_set()
+
+    def icursor(self, *args, **kwargs):
+        pass
 
     def configure(self, **kwargs):
         if "placeholder_text" in kwargs:

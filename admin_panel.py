@@ -28,10 +28,12 @@ class AdminPanel(ctk.CTk):
 
         self._clock_timer = None
         self._report_timer = None
+        self._backup_timer = None
         restore_or_center(self, "admin_window", 1200, 700)
         self.after(150, lambda: apply_gold_cursor(self))
         self._build_ui()
         self.after(2000, self._start_report_scheduler)
+        self.after(2500, self._start_backup_scheduler)
         self.bind("<Escape>", lambda e: self._logout())
         self.protocol("WM_DELETE_WINDOW", self._logout)
 
@@ -159,6 +161,11 @@ class AdminPanel(ctk.CTk):
         if getattr(self, "_report_timer", None):
             try:
                 self.after_cancel(self._report_timer)
+            except Exception:
+                pass
+        if getattr(self, "_backup_timer", None):
+            try:
+                self.after_cancel(self._backup_timer)
             except Exception:
                 pass
         super().destroy()
@@ -396,11 +403,11 @@ class AdminPanel(ctk.CTk):
         """نافذة الإعدادات (ترس بجانب خروج) — تحتوي التقارير + تغيير كلمة المرور — أدمن فقط."""
         win = ctk.CTkToplevel(self)
         win.title("")
-        win.geometry("520x640")
+        win.geometry("520x720")
         win.configure(fg_color=COLORS["bg_dark"])
         make_undecorated(win)
-        enable_resize(win, 460, 520)
-        restore_or_center(win, "admin_settings", 520, 640)
+        enable_resize(win, 460, 560)
+        restore_or_center(win, "admin_settings", 520, 720)
         win.protocol("WM_DELETE_WINDOW", lambda: (save_window_state("admin_settings", win.geometry()), win.destroy()))
         win.bind("<Escape>", lambda e: (save_window_state("admin_settings", win.geometry()), win.destroy()))
         from titlebar import TitleBar
@@ -446,6 +453,71 @@ class AdminPanel(ctk.CTk):
 
         ctk.CTkButton(report_frame, text=reshape_arabic("إنشاء تقرير اليوم الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["info"], hover_color=COLORS["info_hover"], text_color=COLORS["text_white"], command=self._generate_report_now).pack(fill="x", padx=14, pady=(0, 12))
         ctk.CTkLabel(report_frame, text=reshape_arabic("الملف يُحفظ باسم _YYYY-MM-DD.pdf في مجلد reports حتى لو فشل الإرسال"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 10))
+
+        # --- كارت النسخ الاحتياطي على GitHub ---
+        try:
+            from git_backup import load_backup_config as _load_bak_cfg
+            _bak_cfg = _load_bak_cfg()
+        except Exception:
+            _bak_cfg = {"enabled": False, "frequency": "daily", "time": "02:00", "last_run": ""}
+        backup_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
+        backup_frame.pack(fill="x", pady=(0, 12), padx=4)
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("النسخ الاحتياطي على GitHub"), font=FONT_HEADER, text_color=COLORS["accent"]).pack(anchor="e", padx=14, pady=(12, 4))
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("يرفع قاعدة البيانات والملفات تلقائياً عبر: git add .  →  commit  →  push"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right").pack(fill="x", padx=14, pady=(0, 8))
+
+        self.backup_enabled_var = ctk.BooleanVar(value=_bak_cfg.get("enabled", False))
+        self.backup_switch = ctk.CTkSwitch(backup_frame, text=reshape_arabic("تفعيل النسخ التلقائي"), font=FONT_SMALL, variable=self.backup_enabled_var, command=self._on_backup_toggle, progress_color=COLORS["accent"], button_color=COLORS["text_white"], fg_color=COLORS["bg_input"], text_color=COLORS["text_light"])
+        self.backup_switch.pack(anchor="e", padx=14, pady=(0, 8))
+
+        # التكرار
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("التكرار"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 4))
+        freq_display_map = {
+            reshape_arabic("يومي"): "daily",
+            reshape_arabic("كل يومين"): "every2days",
+            reshape_arabic("اسبوعي"): "weekly",
+            reshape_arabic("شهري"): "monthly",
+        }
+        freq_reverse = {v: k for k, v in freq_display_map.items()}
+        self._freq_display_map = freq_display_map
+        self._freq_reverse = freq_reverse
+        freq_values = list(freq_display_map.keys())
+        self.backup_freq_menu = AnimatedOptionMenu(
+            backup_frame, values=freq_values, font=FONT_SMALL, dropdown_font=FONT_SMALL,
+            height=36, corner_radius=6, fg_color=COLORS["bg_input"],
+            button_color=COLORS["accent"], button_hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_white"],
+        )
+        cur_freq = _bak_cfg.get("frequency", "daily")
+        self.backup_freq_menu.set(freq_reverse.get(cur_freq, freq_values[0]))
+        self.backup_freq_menu.pack(fill="x", padx=14, pady=(0, 8))
+
+        # الوقت
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("وقت الرفع (HH:MM) — 24 ساعة"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 4))
+        backup_time_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
+        backup_time_row.pack(fill="x", padx=14, pady=(0, 8))
+        self.backup_time_entry = ctk.CTkEntry(backup_time_row, font=FONT_BODY, height=42, corner_radius=8, fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], border_color=COLORS["border"], justify="center", placeholder_text="02:00")
+        self.backup_time_entry.insert(0, _bak_cfg.get("time", "02:00"))
+        self.backup_time_entry.pack(side="right", fill="x", expand=True, padx=(0, 8))
+        self.backup_time_entry.bind("<KeyRelease>", self._on_backup_time_typed)
+        ctk.CTkButton(backup_time_row, text=reshape_arabic("حفظ"), font=FONT_SMALL, width=80, height=42, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=self._save_backup_config).pack(side="right")
+
+        self.backup_status = ctk.CTkLabel(backup_frame, text="", font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right")
+        self.backup_status.pack(fill="x", padx=14, pady=(6, 8))
+        # حالة مبدئية
+        self._freq_to_orig = {"daily": "يومي", "every2days": "كل يومين", "weekly": "اسبوعي", "monthly": "شهري"}
+        if _bak_cfg.get("enabled"):
+            orig = self._freq_to_orig.get(_bak_cfg.get("frequency","daily"), _bak_cfg.get("frequency","daily"))
+            self.backup_status.configure(text=reshape_arabic(f"مفعل — {orig} عند {_bak_cfg.get('time','02:00')}"), text_color=COLORS["success"])
+        else:
+            last = _bak_cfg.get("last_run","")
+            if last:
+                self.backup_status.configure(text=reshape_arabic(f"متوقف — آخر رفع {last}"), text_color=COLORS["text_light"])
+            else:
+                self.backup_status.configure(text=reshape_arabic("متوقف — فعّل واختر التكرار والوقت ثم احفظ"), text_color=COLORS["text_light"])
+
+        btn_backup_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
+        btn_backup_row.pack(fill="x", padx=14, pady=(0, 12))
+        ctk.CTkButton(btn_backup_row, text=reshape_arabic("نسخ احتياطي الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["success"], hover_color=COLORS["success_hover"], text_color=COLORS["text_white"], command=self._do_backup_now).pack(fill="x")
 
         # --- كارت كلمة المرور ---
         pass_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
@@ -935,6 +1007,160 @@ class AdminPanel(ctk.CTk):
                 self._generate_report_now()
         except Exception as e:
             print("scheduler err", e)
+
+    # ---------- النسخ الاحتياطي على GitHub ----------
+    def _load_backup_config(self):
+        try:
+            from git_backup import load_backup_config
+            return load_backup_config()
+        except Exception:
+            return {"enabled": False, "frequency": "daily", "time": "02:00", "last_run": ""}
+
+    def _save_backup_config_file(self, enabled, frequency, time_str, last_run=None):
+        try:
+            from git_backup import save_backup_config
+            return save_backup_config(enabled, frequency, time_str, last_run)
+        except Exception as e:
+            print("backup_config save err", e)
+
+    def _on_backup_toggle(self):
+        enabled = self.backup_enabled_var.get()
+        if enabled:
+            self.backup_status.configure(text=reshape_arabic("اختر التكرار والوقت ثم اضغط حفظ"), text_color=COLORS["text_light"])
+        else:
+            self.backup_status.configure(text=reshape_arabic("متوقف — سيتوقف الرفع التلقائي"), text_color=COLORS["text_light"])
+            try:
+                cur_freq = self._freq_display_map.get(self.backup_freq_menu.get(), "daily")
+                cur_time = self.backup_time_entry.get().strip() or "02:00"
+                self._save_backup_config_file(False, cur_freq, cur_time)
+            except Exception:
+                pass
+            self._remove_backup_cron()
+
+    def _on_backup_time_typed(self, *_):
+        txt = self.backup_time_entry.get().strip()
+        cleaned = "".join(c for c in txt if c.isdigit() or c == ":")[:5]
+        if cleaned.count(":") > 1:
+            parts = cleaned.split(":")
+            cleaned = parts[0] + ":" + "".join(parts[1:])
+        if cleaned != txt:
+            self.backup_time_entry.delete(0, "end")
+            self.backup_time_entry.insert(0, cleaned)
+
+    def _save_backup_config(self):
+        time_str = self.backup_time_entry.get().strip() or "02:00"
+        try:
+            hh, mm = time_str.split(":")
+            hh, mm = int(hh), int(mm)
+            if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                raise ValueError
+            time_str = f"{hh:02d}:{mm:02d}"
+            self.backup_time_entry.delete(0, "end")
+            self.backup_time_entry.insert(0, time_str)
+        except Exception:
+            self.backup_status.configure(text=reshape_arabic("صيغة الوقت غير صحيحة (HH:MM)"), text_color=COLORS["danger"])
+            return
+        try:
+            freq = self._freq_display_map.get(self.backup_freq_menu.get(), "daily")
+        except Exception:
+            freq = "daily"
+        enabled = self.backup_enabled_var.get()
+        self._save_backup_config_file(enabled, freq, time_str, self._load_backup_config().get("last_run", ""))
+        if enabled:
+            self._install_backup_cron(freq, time_str)
+            orig = getattr(self, "_freq_to_orig", {"daily":"يومي","every2days":"كل يومين","weekly":"اسبوعي","monthly":"شهري"}).get(freq, freq)
+            self.backup_status.configure(text=reshape_arabic(f"مفعل — {orig} عند {time_str}"), text_color=COLORS["success"])
+            try:
+                self.status_label.configure(text=reshape_arabic(f"تم حفظ جدولة النسخ {orig} {time_str}"), text_color=COLORS["success"])
+            except Exception:
+                pass
+        else:
+            self._remove_backup_cron()
+            self.backup_status.configure(text=reshape_arabic("متوقف"), text_color=COLORS["text_light"])
+            try:
+                self.status_label.configure(text=reshape_arabic("تم إيقاف النسخ الاحتياطي"), text_color=COLORS["text_light"])
+            except Exception:
+                pass
+
+    def _install_backup_cron(self, frequency, time_str):
+        try:
+            from git_backup import install_cron
+            install_cron(frequency, time_str)
+        except Exception as e:
+            print("backup cron install err", e)
+
+    def _remove_backup_cron(self):
+        try:
+            from git_backup import remove_cron
+            remove_cron()
+        except Exception as e:
+            print("backup cron remove err", e)
+
+    def _do_backup_now(self):
+        """نسخ احتياطي فوري بالضغط على الزر."""
+        self.backup_status.configure(text=reshape_arabic("جاري الرفع..."), text_color=COLORS["text_light"])
+        def worker():
+            try:
+                from git_backup import do_git_backup, save_backup_config, load_backup_config
+                ok, msg = do_git_backup()
+                cfg = load_backup_config()
+                if ok:
+                    # حدث last_run عند النجاح
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    try:
+                        save_backup_config(cfg.get("enabled", False), cfg.get("frequency","daily"), cfg.get("time","02:00"), last_run=today)
+                    except Exception:
+                        pass
+                def done():
+                    self.backup_status.configure(text=reshape_arabic(msg[:80]), text_color=COLORS["success"] if ok else COLORS["danger"])
+                    try:
+                        self.status_label.configure(text=reshape_arabic(msg[:60]), text_color=COLORS["success"] if ok else COLORS["danger"])
+                    except Exception:
+                        pass
+                self.after(0, done)
+            except Exception as e:
+                self.after(0, lambda: self.backup_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"]))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_backup_scheduler(self):
+        """مجدول داخل التطبيق: كل 60 ثانية يفحص وقت النسخ."""
+        try:
+            self._check_backup_schedule()
+        except Exception as e:
+            print("backup scheduler err", e)
+        self._backup_timer = self.after(60000, self._start_backup_scheduler)
+
+    def _check_backup_schedule(self):
+        try:
+            from git_backup import load_backup_config, should_run_today, do_git_backup, save_backup_config
+            cfg = load_backup_config()
+            if not cfg.get("enabled"):
+                return
+            now = datetime.now()
+            cur_time = now.strftime("%H:%M")
+            target = cfg.get("time", "02:00")
+            if cur_time != target:
+                return
+            today = now.date()
+            today_str = now.strftime("%Y-%m-%d")
+            freq = cfg.get("frequency", "daily")
+            last = cfg.get("last_run", "")
+            if not should_run_today(freq, last, today):
+                return
+            print(f"[backup scheduler] حان وقت النسخ {target} ({freq}) — رفع {today_str}")
+            # حدث last_run فوراً لمنع التكرار
+            save_backup_config(True, freq, target, last_run=today_str)
+            # نفذ الرفع في thread
+            def worker():
+                ok, msg = do_git_backup()
+                print(f"[backup] {msg}")
+                try:
+                    self.after(0, lambda: self.backup_status.configure(text=reshape_arabic(msg[:80]), text_color=COLORS["success"] if ok else COLORS["danger"]))
+                except Exception:
+                    pass
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            print("backup check err", e)
 
     def _clear_form(self):
         self.name_entry.delete(0, "end")
