@@ -29,10 +29,16 @@ def _load_print_cfg():
     return cfg.get("print", {})
 
 
-def _image_to_raster(img, mirror=False):
+def _image_to_raster(img, mirror=False, rotate180=False):
     """تحويل صورة PIL لبيانات ESC/POS raster (GS v 0) بالترتيب القياسي:
     كل بايت = 8 نقط أفقية، وأقصى نقطة على الشمال هي bit 7 (MSB-first).
-    مفيش تقليص للعرض هنا — الصورة لازم تكون جاهزة بالعرض النهائي بالنقط."""
+    مفيش تقليص للعرض هنا — الصورة لازم تكون جاهزة بالعرض النهائي بالنقط.
+    mirror: قلب أفقي (مرآة) — rotate180: دوران 180° (مقلوب تماماً)."""
+    # طبّق التحويل الهندسي قبل التحويل النقطي — أدق وأسرع من الحساب اليدوي
+    if rotate180:
+        img = img.transpose(Image.ROTATE_180)
+    elif mirror:
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
     img = img.convert("L")
     img = ImageOps.autocontrast(img)
     img = img.point(lambda p: 255 if p >= 140 else 0)
@@ -46,17 +52,17 @@ def _image_to_raster(img, mirror=False):
             byte = 0
             for bit in range(8):
                 x0 = bx * 8 + bit
-                x = x0 if not mirror else w - 1 - x0
+                x = x0
                 if x < w and pixels[x, y] == 0:
                     byte |= 1 << (7 - bit)
             data.append(byte)
     return width_bytes, img.height, bytes(data)
 
 
-def _build_escpos(image, mirror=False):
+def _build_escpos(image, mirror=False, rotate180=False):
     """بناء أمر GS v 0 (raster) — الوضع القياسي لكل طابعات ESC/POS.
     نبدأ بـ ESC @ (تهيئة) عشان أي وضع شغال عند الطابعة يرجع لطبيعته."""
-    wb, h, data = _image_to_raster(image, mirror=mirror)
+    wb, h, data = _image_to_raster(image, mirror=mirror, rotate180=rotate180)
     cmd = b"\x1b\x40"  # تهيئة
     cmd += b"\x1d\x76\x30\x00"  # GS v 0
     cmd += bytes([wb & 0xFF, (wb >> 8) & 0xFF])
@@ -65,9 +71,9 @@ def _build_escpos(image, mirror=False):
     return cmd
 
 
-def _build_escpos_text(image, width_dots=None, mirror=False):
+def _build_escpos_text(image, width_dots=None, mirror=False, rotate180=False):
     """للتوافق مع الكود القديم: بتبعت الصورة بأمر GS v 0 (بعد إصلاح الترتيب)."""
-    return _build_escpos(image, mirror=mirror)
+    return _build_escpos(image, mirror=mirror, rotate180=rotate180)
 
 
 def _feed_dots(n_dots):
@@ -124,14 +130,15 @@ def _send_payload(payload):
     raise last_err
 
 
-def _build_tspl(img, label_w_mm, label_h_mm, gap_mm, copies=1, sensor_align=True):
+def _build_tspl(img, label_w_mm, label_h_mm, gap_mm, copies=1, sensor_align=True, mirror=False, rotate180=False):
     """بناء أوامر TSPL (وضع Label Mode / الملصقات).
     الطابعة في وضع Label بتفهم لغة TSPL مش ESC/POS.
     sensor_align = تفعيل أمر GAPDETECT ON: الطابعة بتسحب الورق وتقف
     بحساس الفجوة عند أول الستيكر قبل كل طباعة (تظبيط تلقائي).
+    mirror/rotate180: قلب/دوران الصورة قبل الإرسال — مهم لو الطباعة طالعة مقلوبة.
     ملحوظة: طابعات TSPL بتطبع البت = 1 أبيض — فبنعكس البايتات (XOR 0xFF)
     عشان الخلفية تطلع بيضا والكتابة سودا (زي ما حصل في وضع receipt)."""
-    wb, h, data = _image_to_raster(img)
+    wb, h, data = _image_to_raster(img, mirror=mirror, rotate180=rotate180)
     data = bytes(b ^ 0xFF for b in data)
     cmd = b""
     cmd += f"SIZE {label_w_mm:g} mm, {label_h_mm:g} mm\r\n".encode()
@@ -165,6 +172,7 @@ def _build_payload(cfg, order_data=None, copies=1):
     gap_mm = float(pcfg.get("label_gap_mm", 2))
     gap_dots = int(round(gap_mm * ppm))
     mirror = bool(pcfg.get("mirror", False))
+    rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
     mode = pcfg.get("printer_mode", "receipt")
 
     img = draw_sticker(cfg, order_data)
@@ -172,7 +180,8 @@ def _build_payload(cfg, order_data=None, copies=1):
     if mode == "label":
         return _build_tspl(img, label_w_mm_t, label_h_mm_t, gap_mm,
                            copies=max(1, int(copies)),
-                           sensor_align=bool(pcfg.get("sensor_align", True)))
+                           sensor_align=bool(pcfg.get("sensor_align", True)),
+                           mirror=mirror, rotate180=rotate180)
 
     # ---------- ESC/POS ----------
     if label_w > head_dots:
@@ -184,7 +193,7 @@ def _build_payload(cfg, order_data=None, copies=1):
         padded.paste(img, (side, 0))
         img = padded
 
-    payload = _build_escpos(img, mirror=mirror)
+    payload = _build_escpos(img, mirror=mirror, rotate180=rotate180)
 
     align_mode = pcfg.get("align_mode", "auto")
     if align_mode == "auto":

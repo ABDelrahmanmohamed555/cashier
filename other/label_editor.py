@@ -377,13 +377,17 @@ class LabelEditor(ctk.CTk):
                 mode = pcfg.get("printer_mode", "receipt")
 
                 if mode == "label":
+                    mirrored = bool(pcfg.get("mirror", False))
+                    rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
                     payload = printing._build_tspl(
                         img, w, h, float(pcfg.get("label_gap_mm", 2)),
                         copies=copies,
-                        sensor_align=bool(pcfg.get("sensor_align", True)))
+                        sensor_align=bool(pcfg.get("sensor_align", True)),
+                        mirror=mirrored, rotate180=rotate180)
                 else:
                     mirrored = bool(pcfg.get("mirror", False))
-                    payload = printing._build_escpos(img, mirror=mirrored) * copies
+                    rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
+                    payload = printing._build_escpos(img, mirror=mirrored, rotate180=rotate180) * copies
                 printing._send_payload(payload)
                 self.after(0, self._set_status, f"تمت الطباعة ({copies} نسخة) ✓", COLORS["success"])
             except PermissionError:
