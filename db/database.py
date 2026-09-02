@@ -6,9 +6,13 @@ from config import DB_PATH, ADMIN_USERNAME, ADMIN_PASSWORD, EMPLOYEE_USERNAME, E
 
 def get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 3000")
+    except Exception:
+        pass
     return conn
 
 
@@ -62,6 +66,7 @@ def init_db():
 
 
 def authenticate(username, password):
+    # 1) تحقق من config (للسماح بتغيير الباسوورد مباشرة من الملف)
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         conn = get_connection()
         cursor = conn.cursor()
@@ -85,6 +90,18 @@ def authenticate(username, password):
             "password": EMPLOYEE_PASSWORD,
             "role": "employee",
         }
+
+    # 2) تحقق من قاعدة البيانات أيضاً (لدعم تغيير الباسوورد من الواجهة أو يدوياً في DB)
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, username, password, role FROM employees WHERE username=? AND password=?", (username, password))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return {"id": row["id"], "name": row["name"], "username": row["username"], "password": row["password"], "role": row["role"]}
+    except Exception:
+        pass
 
     return None
 

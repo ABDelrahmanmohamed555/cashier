@@ -13,7 +13,7 @@
     "min_font_pt": 10
   },
   "print": {
-    "_comment": "printer_mode: label = الطابعة على وضع Label (بتستقبل أوامر TSPL) — receipt = الطابعة على وضع Receipt (بتستقبل أوامر ESC/POS). لازم يطابق المود اللي انت محططه في الطابعة. printer_width_dots: 384 لطابعة 58mm (203dpi). label_gap_mm: الفجوة بين الستيكر واللي بعده. align_mode: auto = تغذية بحساس الفجوة (مش بتشتغل إلا في وضع receipt) — fixed = تغذية بمقاس ثابت. align_offset_dots: مسافة إضافية بعد بداية الستيكر (8 نقطة = 1مم). sensor_align: true = بتبعت أمر GAPDETECT ON في وضع label فتقف الطابعة بحساس الفجوة عند أول الستيكر قبل كل طباعة — false = من غيرها. mirror: اقلبها true لو الصورة طلعت معكوسة أفقياً. rotate180: اقلبها true لو الطباعة طالعة مقلوبة 180° (فوق تحت). transport: usb أو tcp (المنفذ 9100).",
+    "_comment": "تم قفل اتجاه الطباعة هاردكود: label يستخدم DIRECTION 1 مع rotate180=false — الحروف سليمة والستيكر في مكانه. لا تغير direction/rotate180.",
     "printer_mode": "label",
     "printer_width_dots": 384,
     "label_gap_mm": 2,
@@ -21,7 +21,9 @@
     "align_offset_dots": 0,
     "sensor_align": true,
     "mirror": false,
-    "rotate180": true,
+    "rotate180": false,
+    "direction": 1,
+    "orientation_locked": true,
     "font_size_pt": 18,
     "line_gap_pt": 11,
     "transport": "usb",

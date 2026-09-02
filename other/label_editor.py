@@ -377,13 +377,12 @@ class LabelEditor(ctk.CTk):
                 mode = pcfg.get("printer_mode", "receipt")
 
                 if mode == "label":
-                    mirrored = bool(pcfg.get("mirror", False))
-                    rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
+                    # إصلاح دائم: الحروف سليمة والستيكر مقلوب — DIRECTION 1
                     payload = printing._build_tspl(
                         img, w, h, float(pcfg.get("label_gap_mm", 2)),
                         copies=copies,
                         sensor_align=bool(pcfg.get("sensor_align", True)),
-                        mirror=mirrored, rotate180=rotate180)
+                        mirror=False, rotate180=False, direction=1)
                 else:
                     mirrored = bool(pcfg.get("mirror", False))
                     rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
