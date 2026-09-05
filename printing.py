@@ -2,6 +2,7 @@
 import glob
 import json
 import os
+import platform
 import threading
 import time
 from PIL import Image, ImageOps
@@ -9,17 +10,40 @@ from PIL import Image, ImageOps
 from config import BASE_DIR
 from sticker import load_config, draw_sticker
 
-_PRINTER_GLOB = "/dev/usb/lp*"
+_IS_WINDOWS = platform.system().lower().startswith("win")
+_PRINTER_GLOB = "/dev/usb/lp*" if not _IS_WINDOWS else r"\\.\USB*"
 _CONFIG_PATH = os.path.join(BASE_DIR, "assets", "sticker_config.json")
 
 
 def find_printer():
-    """إرجاع أول جهاز طابعة USB متاح (مثل /dev/usb/lp0) أو None."""
+    """إرجاع أول جهاز طابعة USB متاح (مثل /dev/usb/lp0 على لينكس أو win32print على ويندوز) أو None."""
+    if _IS_WINDOWS:
+        # ويندوز: حاول win32print إن وجد، وإلا اعتمد على TCP (printer_available سيرجع False فينه)
+        try:
+            import win32print
+            printers = [p[2] for p in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL)]
+            # ابحث عن طابعة حرارية/ملصقات
+            for name in printers:
+                low = name.lower()
+                if any(k in low for k in ["thermal", "label", "pos", "xp-", "gprinter", "zjiang", "cashier", "barcode"]):
+                    return name
+            return printers[0] if printers else None
+        except Exception:
+            # بدون win32print نعتمد على الشبكة (transport tcp)
+            return None
     devices = sorted(glob.glob(_PRINTER_GLOB))
     return devices[0] if devices else None
 
 
 def printer_available():
+    # على ويندوز بدون win32print نعتبر الطابعة متاحة لو النقل tcp
+    if _IS_WINDOWS:
+        try:
+            pcfg = _load_print_cfg()
+            if pcfg.get("transport") == "tcp":
+                return True
+        except Exception:
+            pass
     return find_printer() is not None
 
 
@@ -101,7 +125,7 @@ def _wait_for_printer(timeout=20):
 
 def _send_payload(payload):
     """إرسال البيانات للطابعة عبر الناقل المحدد في الإعدادات:
-    usb = كتابة مباشرة على /dev/usb/lp0 — tcp = طابعة شبكة (منفذ 9100).
+    usb = كتابة مباشرة على /dev/usb/lp0 (لينكس) أو win32print (ويندوز) — tcp = طابعة شبكة (منفذ 9100).
     مع إعادة محاولة سريعة لأن الطابعات الصينية (STM32) بتعمل
     USB disconnect كل ثواني — لازم نكتبها في نافذة الاتصال القصيرة."""
     pcfg = _load_print_cfg()
@@ -113,6 +137,33 @@ def _send_payload(payload):
         with socket.create_connection((host, port), timeout=5) as s:
             s.sendall(payload)
         return
+    # ويندوز USB عبر win32print
+    if _IS_WINDOWS and transport == "usb":
+        try:
+            import win32print
+            printer_name = find_printer()
+            if not printer_name:
+                raise OSError("لا توجد طابعة ويندوز — تأكد من تعريفها أو استخدم transport=tcp")
+            hPrinter = win32print.OpenPrinter(printer_name)
+            try:
+                win32print.StartDocPrinter(hPrinter, 1, ("label", None, "RAW"))
+                win32print.StartPagePrinter(hPrinter)
+                win32print.WritePrinter(hPrinter, payload)
+                win32print.EndPagePrinter(hPrinter)
+                win32print.EndDocPrinter(hPrinter)
+            finally:
+                win32print.ClosePrinter(hPrinter)
+            return
+        except Exception as e:
+            # لو win32print غير مثبت، جرّب الكتابة المباشرة كـ fallback
+            try:
+                # جرب فتح كـ file لو كان اسم منفذ مثل COM1 أو USB001
+                device = pcfg.get("windows_device", "USB001")
+                with open(device, "wb", buffering=0) as f:
+                    f.write(payload)
+                return
+            except Exception:
+                raise e
     max_attempts = int(pcfg.get("usb_retries", 20))
     last_err = None
     for attempt in range(max_attempts):

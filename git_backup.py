@@ -7,9 +7,12 @@
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 from datetime import datetime, timedelta, date
+
+_IS_WINDOWS = platform.system().lower().startswith("win")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "assets", "backup_config.json")
@@ -261,8 +264,8 @@ def do_git_backup(custom_message=None):
 
 
 def install_cron(frequency=None, time_str=None):
-    """تثبيت cron يشغل git_backup.py --check في الوقت المحدد.
-    نستخدم تشغيل يومي عند الوقت المختار، والسكربت نفسه يراعي التكرار."""
+    """تثبيت جدولة يشغل git_backup.py --check في الوقت المحدد.
+    يكتشف النظام تلقائياً: لينكس → cron، ويندوز → Task Scheduler."""
     cfg = load_backup_config()
     if frequency is None:
         frequency = cfg.get("frequency", "daily")
@@ -275,21 +278,39 @@ def install_cron(frequency=None, time_str=None):
     except Exception:
         hh, mm = 2, 0
 
-    # الأمر: يومياً عند HH:MM يشغل السكربت مع --check
-    # السكربت سيقرر داخلياً هل اليوم يستحق حسب frequency
+    if _IS_WINDOWS:
+        # ويندوز: استخدم Task Scheduler
+        task_name = "CashierBackup"
+        time_str_win = f"{hh:02d}:{mm:02d}"
+        cmd = f'"{sys.executable}" "{os.path.join(BASE_DIR, "git_backup.py")}" --check'
+        try:
+            # احذف القديم أولاً
+            subprocess.run(["schtasks", "/delete", "/tn", task_name, "/f"], capture_output=True, text=True, timeout=10)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run(["schtasks", "/create", "/tn", task_name, "/tr", cmd, "/sc", "daily", "/st", time_str_win, "/f"], capture_output=True, text=True, timeout=15)
+            if r.returncode == 0:
+                print(f"تم تثبيت جدولة ويندوز: {task_name} يومياً {time_str_win}")
+                return True
+            print(f"فشل schtasks: {r.stderr or r.stdout}")
+            return False
+        except Exception as e:
+            print(f"فشل تثبيت Task Scheduler: {e}")
+            return False
+
+    # لينكس: cron
     cmd = " ".join([
         f"cd {BASE_DIR} &&",
         f"{sys.executable} {os.path.join(BASE_DIR, 'git_backup.py')} --check",
         f">> {os.path.join(BASE_DIR, 'reports', 'backup_cron.log')} 2>&1",
     ])
-    # cron يشتغل يومياً — التكرار يحسمه السكربت
     entry = f"{mm} {hh} * * * {cmd}\n"
     try:
         cr = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
         existing = cr.stdout if cr.returncode == 0 else ""
     except Exception:
         existing = ""
-    # احذف أي جدولة قديمة لنفس السكربت
     if "git_backup.py" in existing:
         lines = [ln for ln in existing.splitlines() if "git_backup.py" not in ln]
         existing = "\n".join(lines) + ("\n" if lines else "")
@@ -307,6 +328,18 @@ def install_cron(frequency=None, time_str=None):
 
 
 def remove_cron():
+    if _IS_WINDOWS:
+        task_name = "CashierBackup"
+        try:
+            r = subprocess.run(["schtasks", "/delete", "/tn", task_name, "/f"], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 or "ERROR: The system cannot find the file" in (r.stderr or ""):
+                print("تمت إزالة جدولة ويندوز")
+                return True
+            print(f"فشل حذف Task: {r.stderr or r.stdout}")
+            return False
+        except Exception as e:
+            print(f"cron remove err: {e}")
+            return False
     try:
         cr = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
         existing = cr.stdout if cr.returncode == 0 else ""

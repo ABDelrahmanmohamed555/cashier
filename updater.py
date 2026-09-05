@@ -8,12 +8,14 @@
 import argparse
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
 import hashlib
 from datetime import datetime, date
 
+_IS_WINDOWS = platform.system().lower().startswith("win")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "assets", "updater_config.json")
 BACKUP_CONFIG_PATH = os.path.join(BASE_DIR, "assets", "backup_config.json")
@@ -184,6 +186,24 @@ def install_cron(time_str="03:00"):
         hh = max(0, min(23, hh)); mm = max(0, min(59, mm))
     except Exception:
         hh, mm = 3, 0
+    if _IS_WINDOWS:
+        task_name = "CashierUpdater"
+        time_str_win = f"{hh:02d}:{mm:02d}"
+        cmd = f'"{sys.executable}" "{os.path.join(BASE_DIR, "updater.py")}" --check'
+        try:
+            subprocess.run(["schtasks", "/delete", "/tn", task_name, "/f"], capture_output=True, text=True, timeout=10)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run(["schtasks", "/create", "/tn", task_name, "/tr", cmd, "/sc", "daily", "/st", time_str_win, "/f"], capture_output=True, text=True, timeout=15)
+            if r.returncode == 0:
+                print(f"تم تثبيت جدولة ويندوز: {task_name} يومياً {time_str_win}")
+                return True
+            print(f"فشل schtasks: {r.stderr or r.stdout}")
+            return False
+        except Exception as e:
+            print(f"فشل Task Scheduler: {e}")
+            return False
     cmd = f"cd {BASE_DIR} && {sys.executable} {os.path.join(BASE_DIR, 'updater.py')} --check >> {os.path.join(BASE_DIR, 'reports', 'updater_cron.log')} 2>&1"
     entry = f"{mm} {hh} * * * {cmd}\n"
     try:
@@ -205,6 +225,18 @@ def install_cron(time_str="03:00"):
         return False
 
 def remove_cron():
+    if _IS_WINDOWS:
+        task_name = "CashierUpdater"
+        try:
+            r = subprocess.run(["schtasks", "/delete", "/tn", task_name, "/f"], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 or "ERROR: The system cannot find the file" in (r.stderr or ""):
+                print("تمت إزالة جدولة ويندوز")
+                return True
+            print(f"فشل حذف Task: {r.stderr or r.stdout}")
+            return False
+        except Exception as e:
+            print(f"cron remove err: {e}")
+            return False
     try:
         cr = _run(["crontab", "-l"])
         existing = cr.stdout if cr.returncode == 0 else ""

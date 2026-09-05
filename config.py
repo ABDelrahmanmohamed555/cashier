@@ -1,10 +1,18 @@
 import os
 #test2
 
+import platform
+_IS_WINDOWS = platform.system().lower().startswith("win")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(BASE_DIR, "db", "cashier.db")
-FONTS_DIR = os.path.join(BASE_DIR, "assets", "fonts")
+# ويندوز/لينكس تلقائياً
+if _IS_WINDOWS and not os.path.exists(os.path.join(BASE_DIR, "assets", "fonts", "Tajawal-Regular.ttf")):
+    # حاول خطوط ويندوز
+    _win_font = r"C:\Windows\Fonts\arial.ttf"
+    FONTS_DIR = os.path.join(BASE_DIR, "assets", "fonts") if os.path.exists(os.path.join(BASE_DIR, "assets", "fonts", "Tajawal-Regular.ttf")) else (os.path.dirname(_win_font) if os.path.exists(_win_font) else os.path.join(BASE_DIR, "assets", "fonts"))
+else:
+    FONTS_DIR = os.path.join(BASE_DIR, "assets", "fonts")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 
 FONT_ARABIC = "Cairo"
