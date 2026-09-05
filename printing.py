@@ -40,8 +40,9 @@ def _image_to_raster(img, mirror=False, rotate180=False):
     elif mirror:
         img = img.transpose(Image.FLIP_LEFT_RIGHT)
     img = img.convert("L")
-    img = ImageOps.autocontrast(img)
-    img = img.point(lambda p: 255 if p >= 140 else 0)
+    # تحسين جودة الطباعة شوية: autocontrast مع عتبة 135 (كان 130) يعطي أسود أغمق وحواف أوضح للباركود
+    img = ImageOps.autocontrast(img, cutoff=0.5)
+    img = img.point(lambda p: 255 if p >= 135 else 0)
 
     w = img.width
     width_bytes = (w + 7) // 8

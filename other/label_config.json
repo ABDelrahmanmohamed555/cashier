@@ -7,7 +7,7 @@
     {
       "id": "product",
       "label": "اسم المنتج",
-      "text": "250 جنيه",
+      "text": "250+",
       "font_size_pt": 33.0,
       "align": "center",
       "bold": true,
@@ -16,8 +16,8 @@
     {
       "id": "price",
       "label": "السعر",
-      "text": "",
-      "font_size_pt": 10.0,
+      "text": "300 غسالة",
+      "font_size_pt": 19.0,
       "align": "center",
       "bold": true,
       "letter_spacing_pt": 0.0,
@@ -26,8 +26,8 @@
     {
       "id": "note",
       "label": "ملاحظة",
-      "text": "",
-      "font_size_pt": 23.0,
+      "text": "550 جنيه",
+      "font_size_pt": 20.0,
       "align": "center",
       "bold": false,
       "letter_spacing_pt": 0.0
