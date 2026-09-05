@@ -515,6 +515,26 @@ class AdminPanel(ctk.CTk):
             else:
                 self.backup_status.configure(text=reshape_arabic("متوقف — فعّل واختر التكرار والوقت ثم احفظ"), text_color=COLORS["text_light"])
 
+        # --- توكن GitHub لمرة واحدة ---
+        try:
+            from git_backup import load_github_token
+            _tok = load_github_token()
+            _tok_status = "محفوظ ✓" if _tok else "غير محفوظ"
+            _tok_color = COLORS["success"] if _tok else COLORS["warning"]
+        except Exception:
+            _tok_status = "غير محفوظ"
+            _tok_color = COLORS["text_light"]
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("توكن GitHub (ghp_...) لمرة واحدة"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(8, 4))
+        token_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
+        token_row.pack(fill="x", padx=14, pady=(0, 4))
+        self.backup_token_entry = ctk.CTkEntry(token_row, font=FONT_SMALL, height=42, corner_radius=8, fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], border_color=COLORS["border"], justify="left", placeholder_text="ghp_... أو github_pat_...", show="*")
+        self.backup_token_entry.pack(side="right", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(token_row, text=reshape_arabic("حفظ"), font=FONT_SMALL, width=70, height=42, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=self._save_github_token).pack(side="right", padx=(0, 4))
+        ctk.CTkButton(token_row, text=reshape_arabic("مسح"), font=FONT_SMALL, width=60, height=42, fg_color="transparent", border_width=1, border_color=COLORS["border"], hover_color=COLORS["bg_hover"], text_color=COLORS["text_light"], command=self._clear_github_token).pack(side="right")
+        self.backup_token_status = ctk.CTkLabel(backup_frame, text=reshape_arabic(f"الحالة: {_tok_status}"), font=FONT_SMALL, text_color=_tok_color, anchor="e")
+        self.backup_token_status.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkLabel(backup_frame, text=reshape_arabic("أدخل التوكن مرة واحدة من GitHub → Settings → Developer settings → Personal access tokens → Generate new token (classic) → اختر repo"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right").pack(fill="x", padx=14, pady=(0, 8))
+
         btn_backup_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
         btn_backup_row.pack(fill="x", padx=14, pady=(0, 12))
         ctk.CTkButton(btn_backup_row, text=reshape_arabic("نسخ احتياطي الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["success"], hover_color=COLORS["success_hover"], text_color=COLORS["text_white"], command=self._do_backup_now).pack(fill="x")
@@ -1121,6 +1141,32 @@ class AdminPanel(ctk.CTk):
             except Exception as e:
                 self.after(0, lambda: self.backup_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"]))
         threading.Thread(target=worker, daemon=True).start()
+
+    def _save_github_token(self):
+        tok = self.backup_token_entry.get().strip()
+        if not tok:
+            self.backup_token_status.configure(text=reshape_arabic("أدخل التوكن أولاً"), text_color=COLORS["warning"])
+            return
+        try:
+            from git_backup import save_github_token, load_github_token
+            ok, msg = save_github_token(tok)
+            if ok:
+                self.backup_token_entry.delete(0, "end")
+                self.backup_token_status.configure(text=reshape_arabic("محفوظ ✓ لن تحتاج إدخاله مرة أخرى"), text_color=COLORS["success"])
+                self.backup_status.configure(text=reshape_arabic("التوكن محفوظ — جرّب نسخ احتياطي الآن"), text_color=COLORS["success"])
+            else:
+                self.backup_token_status.configure(text=reshape_arabic(msg[:60]), text_color=COLORS["danger"])
+        except Exception as e:
+            self.backup_token_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
+
+    def _clear_github_token(self):
+        try:
+            from git_backup import clear_github_token
+            removed = clear_github_token()
+            self.backup_token_status.configure(text=reshape_arabic("تم مسح التوكن"), text_color=COLORS["text_light"])
+            self.backup_status.configure(text=reshape_arabic("التوكن محذوف — أدخل واحداً جديداً"), text_color=COLORS["warning"])
+        except Exception as e:
+            self.backup_token_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"])
 
     def _start_backup_scheduler(self):
         """مجدول داخل التطبيق: كل 60 ثانية يفحص وقت النسخ."""
