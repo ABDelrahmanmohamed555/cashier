@@ -244,7 +244,7 @@ def print_sticker(order_data=None, copies=1):
     mode = pcfg.get("printer_mode", "receipt")
     try:
         if mode == "label" and copies > 1:
-            delay = float(pcfg.get("inter_copy_delay_ms", 5000)) / 1000.0
+            delay = float(pcfg.get("inter_copy_delay_ms", 3500)) / 1000.0
             payload_one = _build_payload(cfg, order_data, copies=1)
             for i in range(copies):
                 _send_payload(payload_one)
@@ -304,8 +304,8 @@ def print_pil_image(pil_img, copies=1):
                                    mirror=False, rotate180=False, direction=1)
             # إرسال مباشر
             if copies > 1:
-                delay = float(pcfg.get("inter_copy_delay_ms", 5000)) / 1000.0
-                # _build_tspl يبني لنسخ متعددة مرة واحدة، لكن نرسل واحدة واحدة للتأكد (تأخير 5 ثواني بين كل ستيكر)
+                delay = float(pcfg.get("inter_copy_delay_ms", 3500)) / 1000.0
+                # _build_tspl يبني لنسخ متعددة مرة واحدة، لكن نرسل واحدة واحدة للتأكد (تأخير 3.5 ثانية بين كل ستيكر)
                 for i in range(copies):
                     _send_payload(payload if copies == 1 else _build_tspl(canvas, label_w_mm, label_h_mm, float(pcfg.get("label_gap_mm", 2)), copies=1, sensor_align=True, mirror=False, rotate180=False, direction=1))
                     if i < copies - 1:

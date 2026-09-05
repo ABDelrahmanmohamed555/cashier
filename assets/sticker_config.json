@@ -29,7 +29,7 @@
     "transport": "usb",
     "printer_host": "192.168.1.100",
     "printer_port": 9100,
-    "inter_copy_delay_ms": 5000
+    "inter_copy_delay_ms": 3500
   },
   "elements": [
     {

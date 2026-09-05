@@ -29,11 +29,13 @@ class AdminPanel(ctk.CTk):
         self._clock_timer = None
         self._report_timer = None
         self._backup_timer = None
+        self._updater_timer = None
         restore_or_center(self, "admin_window", 1200, 700)
         self.after(150, lambda: apply_gold_cursor(self))
         self._build_ui()
         self.after(2000, self._start_report_scheduler)
         self.after(2500, self._start_backup_scheduler)
+        self.after(3000, self._start_updater_scheduler)
         self.bind("<Escape>", lambda e: self._logout())
         self.protocol("WM_DELETE_WINDOW", self._logout)
 
@@ -166,6 +168,11 @@ class AdminPanel(ctk.CTk):
         if getattr(self, "_backup_timer", None):
             try:
                 self.after_cancel(self._backup_timer)
+            except Exception:
+                pass
+        if getattr(self, "_updater_timer", None):
+            try:
+                self.after_cancel(self._updater_timer)
             except Exception:
                 pass
         super().destroy()
@@ -538,6 +545,38 @@ class AdminPanel(ctk.CTk):
         btn_backup_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
         btn_backup_row.pack(fill="x", padx=14, pady=(0, 12))
         ctk.CTkButton(btn_backup_row, text=reshape_arabic("نسخ احتياطي الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["success"], hover_color=COLORS["success_hover"], text_color=COLORS["text_white"], command=self._do_backup_now).pack(fill="x")
+
+        # --- كارت التحديث التلقائي ---
+        updater_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
+        updater_frame.pack(fill="x", padx=4, pady=(0, 12))
+        ctk.CTkLabel(updater_frame, text=reshape_arabic("التحديث التلقائي"), font=FONT_HEADER, text_color=COLORS["accent"]).pack(anchor="e", padx=14, pady=(12, 4))
+        ctk.CTkLabel(updater_frame, text=reshape_arabic("يفحص GitHub يومياً عند وقت محدد، ولو وجد commit رسالته update1,2... يعمل نسخ احتياطي للـ DB ثم ينزل الملفات المتغيرة فقط ويتأكد أن المحلي == GitHub"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right").pack(fill="x", padx=14, pady=(0, 8))
+        try:
+            from updater import load_updater_config
+            _up_cfg = load_updater_config()
+        except Exception:
+            _up_cfg = {"enabled": False, "time": "03:00", "last_check": "", "last_update": ""}
+        self.updater_enabled_var = ctk.BooleanVar(value=_up_cfg.get("enabled", False))
+        self.updater_switch = ctk.CTkSwitch(updater_frame, text=reshape_arabic("تفعيل التحديث التلقائي"), font=FONT_SMALL, variable=self.updater_enabled_var, command=self._on_updater_toggle, progress_color=COLORS["accent"], button_color=COLORS["text_white"], fg_color=COLORS["bg_input"], text_color=COLORS["text_light"])
+        self.updater_switch.pack(anchor="e", padx=14, pady=(0, 8))
+        ctk.CTkLabel(updater_frame, text=reshape_arabic("وقت الفحص (HH:MM)"), font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e").pack(fill="x", padx=14, pady=(0, 4))
+        updater_time_row = ctk.CTkFrame(updater_frame, fg_color="transparent")
+        updater_time_row.pack(fill="x", padx=14, pady=(0, 8))
+        self.updater_time_entry = ctk.CTkEntry(updater_time_row, font=FONT_BODY, height=42, corner_radius=8, fg_color=COLORS["bg_input"], text_color=COLORS["text_white"], border_color=COLORS["border"], justify="center", placeholder_text="03:00")
+        self.updater_time_entry.insert(0, _up_cfg.get("time", "03:00"))
+        self.updater_time_entry.pack(side="right", fill="x", expand=True, padx=(0, 8))
+        self.updater_time_entry.bind("<KeyRelease>", self._on_updater_time_typed)
+        ctk.CTkButton(updater_time_row, text=reshape_arabic("حفظ"), font=FONT_SMALL, width=80, height=42, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=self._save_updater_config).pack(side="right")
+        self.updater_status = ctk.CTkLabel(updater_frame, text="", font=FONT_SMALL, text_color=COLORS["text_light"], anchor="e", wraplength=420, justify="right")
+        self.updater_status.pack(fill="x", padx=14, pady=(6, 8))
+        if _up_cfg.get("enabled"):
+            self.updater_status.configure(text=reshape_arabic(f"مفعل — يفحص يومياً عند {_up_cfg.get('time','03:00')}"), text_color=COLORS["success"])
+        else:
+            self.updater_status.configure(text=reshape_arabic("متوقف — فعّل واختر الوقت ثم احفظ"), text_color=COLORS["text_light"])
+        updater_btn_row = ctk.CTkFrame(updater_frame, fg_color="transparent")
+        updater_btn_row.pack(fill="x", padx=14, pady=(0, 12))
+        ctk.CTkButton(updater_btn_row, text=reshape_arabic("فحص التحديث الآن"), font=FONT_BODY_BOLD, height=42, fg_color=COLORS["info"], hover_color=COLORS["info_hover"], text_color=COLORS["text_white"], command=self._check_update_now).pack(fill="x", pady=(0, 6))
+        ctk.CTkButton(updater_btn_row, text=reshape_arabic("تحديث الآن (حتى لو ليس وقت الفحص)"), font=FONT_SMALL, height=36, fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color=COLORS["text_white"], command=self._force_update_now).pack(fill="x")
 
         # --- كارت كلمة المرور ---
         pass_frame = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], corner_radius=10)
@@ -1116,6 +1155,106 @@ class AdminPanel(ctk.CTk):
         except Exception as e:
             print("backup cron remove err", e)
 
+    # ---------- التحديث التلقائي ----------
+    def _load_updater_config(self):
+        try:
+            from updater import load_updater_config
+            return load_updater_config()
+        except Exception:
+            return {"enabled": False, "time": "03:00", "last_check": "", "last_update": ""}
+
+    def _save_updater_config_file(self, enabled, time_str, last_check=None, last_update=None):
+        try:
+            from updater import save_updater_config
+            return save_updater_config(enabled, time_str, last_check, last_update)
+        except Exception as e:
+            print("updater_config save err", e)
+
+    def _on_updater_toggle(self):
+        enabled = self.updater_enabled_var.get()
+        if enabled:
+            self.updater_status.configure(text=reshape_arabic("اختر الوقت ثم اضغط حفظ"), text_color=COLORS["text_light"])
+        else:
+            self.updater_status.configure(text=reshape_arabic("متوقف — سيتوقف التحديث التلقائي"), text_color=COLORS["text_light"])
+            try:
+                cur_time = self.updater_time_entry.get().strip() or "03:00"
+                self._save_updater_config_file(False, cur_time)
+            except Exception:
+                pass
+            self._remove_updater_cron()
+
+    def _on_updater_time_typed(self, *_):
+        txt = self.updater_time_entry.get().strip()
+        cleaned = "".join(c for c in txt if c.isdigit() or c == ":")[:5]
+        if cleaned.count(":") > 1:
+            parts = cleaned.split(":")
+            cleaned = parts[0] + ":" + "".join(parts[1:])
+        if cleaned != txt:
+            self.updater_time_entry.delete(0, "end")
+            self.updater_time_entry.insert(0, cleaned)
+
+    def _save_updater_config(self):
+        time_str = self.updater_time_entry.get().strip() or "03:00"
+        try:
+            hh, mm = time_str.split(":")
+            hh, mm = int(hh), int(mm)
+            if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                raise ValueError
+            time_str = f"{hh:02d}:{mm:02d}"
+            self.updater_time_entry.delete(0, "end")
+            self.updater_time_entry.insert(0, time_str)
+        except Exception:
+            self.updater_status.configure(text=reshape_arabic("صيغة الوقت غير صحيحة (HH:MM)"), text_color=COLORS["danger"])
+            return
+        enabled = self.updater_enabled_var.get()
+        self._save_updater_config_file(enabled, time_str, self._load_updater_config().get("last_check", ""), self._load_updater_config().get("last_update", ""))
+        if enabled:
+            self._install_updater_cron(time_str)
+            self.updater_status.configure(text=reshape_arabic(f"مفعل — يفحص يومياً عند {time_str}"), text_color=COLORS["success"])
+        else:
+            self._remove_updater_cron()
+            self.updater_status.configure(text=reshape_arabic("متوقف"), text_color=COLORS["text_light"])
+
+    def _install_updater_cron(self, time_str):
+        try:
+            from updater import install_cron
+            install_cron(time_str)
+        except Exception as e:
+            print("updater cron install err", e)
+
+    def _remove_updater_cron(self):
+        try:
+            from updater import remove_cron
+            remove_cron()
+        except Exception as e:
+            print("updater cron remove err", e)
+
+    def _check_update_now(self):
+        self.updater_status.configure(text=reshape_arabic("جاري فحص التحديث..."), text_color=COLORS["text_light"])
+        def worker():
+            try:
+                from updater import check_for_update
+                has_update, msg, commits = check_for_update()
+                def done():
+                    self.updater_status.configure(text=reshape_arabic(msg[:80]), text_color=COLORS["success"] if has_update else COLORS["text_light"])
+                self.after(0, done)
+            except Exception as e:
+                self.after(0, lambda: self.updater_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"]))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _force_update_now(self):
+        self.updater_status.configure(text=reshape_arabic("جاري التحديث..."), text_color=COLORS["text_light"])
+        def worker():
+            try:
+                from updater import do_update
+                ok, msg = do_update()
+                def done():
+                    self.updater_status.configure(text=reshape_arabic(msg[:80]), text_color=COLORS["success"] if ok else COLORS["danger"])
+                self.after(0, done)
+            except Exception as e:
+                self.after(0, lambda: self.updater_status.configure(text=reshape_arabic(f"خطأ: {e}"), text_color=COLORS["danger"]))
+        threading.Thread(target=worker, daemon=True).start()
+
     def _do_backup_now(self):
         """نسخ احتياطي فوري بالضغط على الزر."""
         self.backup_status.configure(text=reshape_arabic("جاري الرفع..."), text_color=COLORS["text_light"])
@@ -1207,6 +1346,50 @@ class AdminPanel(ctk.CTk):
             threading.Thread(target=worker, daemon=True).start()
         except Exception as e:
             print("backup check err", e)
+
+    def _start_updater_scheduler(self):
+        try:
+            self._check_updater_schedule()
+        except Exception as e:
+            print("updater scheduler err", e)
+        self._updater_timer = self.after(60000, self._start_updater_scheduler)
+
+    def _check_updater_schedule(self):
+        try:
+            from updater import load_updater_config, should_run_today
+            # need should_run_today from updater or git_backup
+            from git_backup import should_run_today as _should_backup
+            # استخدم نفس منطق الأيام
+            cfg = load_updater_config()
+            if not cfg.get("enabled"):
+                return
+            now = datetime.now()
+            cur_time = now.strftime("%H:%M")
+            target = cfg.get("time", "03:00")
+            if cur_time != target:
+                return
+            today = now.date()
+            today_str = now.strftime("%Y-%m-%d")
+            last_check = cfg.get("last_check", "")
+            # استخدم should_run_today من updater (نفس المنطق)
+            from updater import should_run_today as updater_should
+            if not updater_should("daily", last_check, today):
+                return
+            print(f"[updater scheduler] حان وقت الفحص {target} — فحص التحديث")
+            # حدث last_check
+            from updater import save_updater_config, do_update
+            save_updater_config(enabled=True, time_str=target, last_check=today_str, last_update=cfg.get("last_update",""))
+            def worker():
+                ok, msg = do_update()
+                print(f"[updater] {msg}")
+                try:
+                    self.after(0, lambda: self.updater_status.configure(text=msg[:80], text_color=COLORS["success"] if ok else COLORS["danger"]))
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            print("updater check err", e)
 
     def _clear_form(self):
         self.name_entry.delete(0, "end")
