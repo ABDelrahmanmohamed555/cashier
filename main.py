@@ -1,4 +1,4 @@
-# main.py
+# مبضون فشخ
 import os
 import threading
 import time
