@@ -41,6 +41,8 @@ DEVICE_TYPES = [
     "أخرى",
 ]
 
+
+
 ADMIN_USERNAME = "codex"
 ADMIN_PASSWORD = "010100"
 
