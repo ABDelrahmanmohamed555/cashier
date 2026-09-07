@@ -377,17 +377,40 @@ class LabelEditor(ctk.CTk):
                 mode = pcfg.get("printer_mode", "receipt")
 
                 if mode == "label":
-                    # إصلاح دائم: الحروف سليمة والستيكر مقلوب — DIRECTION 1
-                    payload = printing._build_tspl(
-                        img, w, h, float(pcfg.get("label_gap_mm", 2)),
-                        copies=copies,
-                        sensor_align=bool(pcfg.get("sensor_align", True)),
-                        mirror=False, rotate180=False, direction=1)
+                    # تأخير 3.5 ثانية بين كل نسخة حتى يلحق حساس الفجوة
+                    if copies > 1:
+                        import time
+                        delay = float(pcfg.get("inter_copy_delay_ms", 3500)) / 1000.0
+                        for i in range(copies):
+                            payload_one = printing._build_tspl(
+                                img, w, h, float(pcfg.get("label_gap_mm", 2)),
+                                copies=1,
+                                sensor_align=bool(pcfg.get("sensor_align", True)),
+                                mirror=False, rotate180=False, direction=1)
+                            printing._send_payload(payload_one)
+                            if i < copies - 1:
+                                time.sleep(delay)
+                    else:
+                        payload = printing._build_tspl(
+                            img, w, h, float(pcfg.get("label_gap_mm", 2)),
+                            copies=1,
+                            sensor_align=bool(pcfg.get("sensor_align", True)),
+                            mirror=False, rotate180=False, direction=1)
+                        printing._send_payload(payload)
                 else:
                     mirrored = bool(pcfg.get("mirror", False))
                     rotate180 = bool(pcfg.get("rotate180", False) or pcfg.get("rotate_180", False))
-                    payload = printing._build_escpos(img, mirror=mirrored, rotate180=rotate180) * copies
-                printing._send_payload(payload)
+                    if copies > 1:
+                        import time
+                        delay = float(pcfg.get("inter_copy_delay_ms", 3500)) / 1000.0
+                        payload_one = printing._build_escpos(img, mirror=mirrored, rotate180=rotate180)
+                        for i in range(copies):
+                            printing._send_payload(payload_one)
+                            if i < copies - 1:
+                                time.sleep(delay)
+                    else:
+                        payload = printing._build_escpos(img, mirror=mirrored, rotate180=rotate180) * copies
+                        printing._send_payload(payload)
                 self.after(0, self._set_status, f"تمت الطباعة ({copies} نسخة) ✓", COLORS["success"])
             except PermissionError:
                 self.after(0, self._set_status,
